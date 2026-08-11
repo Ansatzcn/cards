@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="app-build" content="2026-08-11-cards-private-richtext-v2">
+<meta name="app-build" content="2026-08-11-cards-public-read-token-edit-v3">
+<meta name="cards-data-file" content="cards_data.json">
 <title>Cards</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -484,29 +485,29 @@ button{cursor:pointer}
         Cards
         <span class="cloud-status">
             <span class="status-dot" id="statusDot"></span>
-            <span id="statusText">未登录</span>
+            <span id="statusText">公开浏览</span>
         </span>
     </h1>
 
     <section class="toolbar">
         <div class="toolbar-group">
             <button class="btn btn-sync" id="syncBtn" type="button" disabled>同步</button>
-            <button class="btn" id="configBtn" type="button">配置</button>
+            <button class="btn" id="configBtn" type="button">编辑登录</button>
             <button class="btn" id="exportBtn" type="button" disabled>导出</button>
             <button class="btn" id="importBtn" type="button" disabled>导入</button>
             <input type="file" id="fileInput" accept=".json,application/json" hidden>
         </div>
-        <span class="last-sync" id="lastSyncTime">需要 Token 才能阅读</span>
+        <span class="last-sync" id="lastSyncTime">正在加载公开内容…</span>
     </section>
 
     <section class="locked-panel" id="lockedPanel">
-        <h2>需要Token登录</h2>
-        <p>验证成功后才能阅读、添加、修改、删除和同步。</p>
-        <button class="btn btn-primary" id="lockedConfigBtn" type="button">配置 Token</button>
+        <h2>公开浏览模式</h2>
+        <p>任何打开本页面的人都可以浏览 Cards。新增、编辑、删除、导入和同步等写操作需要 GitHub Token 登录。</p>
+        <button class="btn btn-primary" id="lockedConfigBtn" type="button">编辑登录</button>
     </section>
 
-    <div id="appContent" class="hidden">
-        <section class="add-section">
+    <div id="appContent">
+        <section class="add-section hidden" id="editorSection">
             <h2>添加</h2>
             <div class="form-group" style="margin-bottom:.9rem">
                 <label for="titleInput">标题（可选）</label>
@@ -541,7 +542,7 @@ button{cursor:pointer}
                 <span class="count-badge" id="countDisplay">0</span>
             </div>
             <div class="cards-list" id="cardsList">
-                <div class="empty-state">暂无</div>
+                <div class="empty-state">正在加载 Cards…</div>
             </div>
         </section>
     </div>
@@ -550,7 +551,7 @@ button{cursor:pointer}
 <section class="overlay hidden" id="editModal" role="dialog" aria-modal="true" aria-labelledby="editHeading">
     <div class="dialog">
         <div class="dialog-scroll">
-            <h3 id="editHeading">编辑</h3>
+            <h3 id="editHeading">编辑 Cards</h3>
             <div class="form-group">
                 <label for="editTitle">标题（可选）</label>
                 <input class="title-input" id="editTitle" type="text" autocomplete="off" placeholder="可留空">
@@ -588,7 +589,7 @@ button{cursor:pointer}
         <div class="dialog-scroll">
             <h3 id="configHeading">GitHub 登录配置</h3>
             <p class="dialog-desc">
-                建议使用仅授权目标仓库、并具有Contents读取和写入权限的细粒度 Token。
+                浏览 Cards 不需要 Token。这里的 Token 仅用于新增、编辑、删除、导入和同步；建议使用仅授权目标仓库、并具有 Contents 读取和写入权限的细粒度 Token。
             </p>
             <div class="form-group">
                 <label for="cfgOwner">仓库所有者</label>
@@ -649,11 +650,19 @@ const META_KEY=`${NS}:meta`;
 const MAX_BYTES=750*1024;
 const AUTO_DELAY=700;
 const API_VERSION='2026-03-10';
+const PUBLIC_DATA_FILE=cleanPublicDataFile(
+    document.querySelector('meta[name="cards-data-file"]')?.content||'cards_data.json'
+);
+
+function cleanPublicDataFile(value){
+    const file=String(value??'').trim();
+    return file||'cards_data.json';
+}
 
 const $=id=>document.getElementById(id);
 const statusDot=$('statusDot'),statusText=$('statusText'),syncBtn=$('syncBtn'),configBtn=$('configBtn'),
 exportBtn=$('exportBtn'),importBtn=$('importBtn'),fileInput=$('fileInput'),lastSyncTime=$('lastSyncTime'),
-lockedPanel=$('lockedPanel'),lockedConfigBtn=$('lockedConfigBtn'),appContent=$('appContent'),
+lockedPanel=$('lockedPanel'),lockedConfigBtn=$('lockedConfigBtn'),appContent=$('appContent'),editorSection=$('editorSection'),
 titleInput=$('titleInput'),contentInput=$('contentInput'),contentToolbar=$('contentToolbar'),addBtn=$('addBtn'),countDisplay=$('countDisplay'),cardsList=$('cardsList'),
 editModal=$('editModal'),editTitle=$('editTitle'),editContent=$('editContent'),editToolbar=$('editToolbar'),editCancel=$('editCancel'),editSave=$('editSave'),
 configModal=$('configModal'),configForm=$('configForm'),cfgOwner=$('cfgOwner'),cfgRepo=$('cfgRepo'),
@@ -664,6 +673,7 @@ let state=[];
 let config={owner:'',repo:'',file:'cards_data.json',token:''};
 let meta={target:'',fingerprint:null,sha:null,lastSyncAt:null};
 let unlocked=false;
+let publicLoaded=false;
 let syncing=false;
 let autoTimer=null;
 let editingId='';
@@ -874,14 +884,67 @@ function record(snapshot,sha){
 }
 function setUnlocked(on){
     unlocked=Boolean(on);
+    appContent.classList.remove('hidden');
     lockedPanel.classList.toggle('hidden',unlocked);
-    appContent.classList.toggle('hidden',!unlocked);
+    editorSection.classList.toggle('hidden',!unlocked);
     syncBtn.disabled=!unlocked;
-    exportBtn.disabled=!unlocked;
     importBtn.disabled=!unlocked;
-    if(!unlocked){
-        countDisplay.textContent='0';
-        cardsList.innerHTML='<div class="empty-state">内容已锁定</div>';
+    exportBtn.disabled=!publicLoaded&&!unlocked;
+    configBtn.textContent=unlocked?'编辑配置':'编辑登录';
+}
+
+// ---------- 公开只读数据 ----------
+function publicDataUrl(){
+    return new URL(PUBLIC_DATA_FILE,location.href).href;
+}
+async function loadPublicView(){
+    status('syncing','加载公开内容…');
+    lastSyncTime.textContent='公开浏览 · 编辑需 Token';
+
+    try{
+        const response=await fetch(publicDataUrl(),{
+            method:'GET',
+            cache:'no-store',
+            headers:{'Accept':'application/json'}
+        });
+        const raw=await response.text();
+
+        if(!response.ok){
+            const error=new Error(`公开数据加载失败：HTTP ${response.status}`);
+            error.status=response.status;
+            throw error;
+        }
+        if(new TextEncoder().encode(raw).length>MAX_BYTES){
+            throw new Error('公开数据超过 750 KB');
+        }
+
+        state=normalizeState(JSON.parse(raw));
+        publicLoaded=true;
+        render();
+        exportBtn.disabled=false;
+        status('online','公开浏览');
+        lastSyncTime.textContent='公开浏览 · 编辑需 Token';
+        return true;
+    }catch(error){
+        console.error(error);
+
+        // 已访问过的设备可退回最近一次缓存；新访客则显示明确错误。
+        const cached=loadCache();
+        state=cached;
+        publicLoaded=cached.length>0;
+        render();
+
+        if(publicLoaded){
+            exportBtn.disabled=false;
+            status('offline','离线浏览');
+            lastSyncTime.textContent='公开数据暂时不可用 · 当前显示本机缓存';
+        }else{
+            exportBtn.disabled=true;
+            status('offline','公开数据不可用');
+            lastSyncTime.textContent='无法加载 cards_data.json · 编辑登录仍可使用';
+            cardsList.innerHTML='<div class="empty-state">暂时无法加载公开 Cards，请稍后刷新。</div>';
+        }
+        return false;
     }
 }
 
@@ -972,12 +1035,11 @@ async function writeRemote(snapshot,sha){
 
 // ---------- 渲染 ----------
 function render(){
-    if(!unlocked)return;
     state=normalizeState(state);
     countDisplay.textContent=String(state.length);
 
     if(!state.length){
-        cardsList.innerHTML='<div class="empty-state">暂无</div>';
+        cardsList.innerHTML='<div class="empty-state">暂无 Cards</div>';
         saveCache();
         return;
     }
@@ -987,29 +1049,33 @@ function render(){
             ${item.title?`<h3 class="cards-title">${esc(item.title)}</h3>`:''}
             <div class="cards-content">${sanitizeHtml(item.content)}</div>
             <div class="cards-footer">
+                ${unlocked?`
                 <div class="item-actions">
                     <button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">编辑</button>
                     <button class="action-btn delete-btn" data-id="${attr(item.id)}" type="button">删除</button>
-                </div>
+                </div>`:''}
                 <time class="cards-date" datetime="${attr(item.createdAt)}">${formatDate(item.createdAt)}</time>
             </div>
         </article>
     `).join('');
 
+    publicLoaded=true;
+    exportBtn.disabled=false;
     saveCache();
 }
 
-// ---------- 登录 / 解锁 ----------
+// ---------- 编辑登录 / 解锁写权限 ----------
 async function login(showResult=true){
     if(!adminConfigured()){
         setUnlocked(false);
-        status('offline','未登录');
-        lastSyncTime.textContent='需要 Token 才能阅读';
-        if(showResult)show('请完整填写仓库和 Token','error');
+        if(publicLoaded||state.length)render();
+        status(publicLoaded?'online':'offline',publicLoaded?'公开浏览':'公开数据不可用');
+        lastSyncTime.textContent=publicLoaded?'公开浏览 · 编辑需 Token':'公开数据未加载 · 编辑需 Token';
+        if(showResult)show('请填写仓库和 Token 以启用编辑','error');
         return false;
     }
 
-    status('syncing','验证 Token…');
+    status('syncing','验证编辑权限…');
     syncBtn.disabled=true;
     exportBtn.disabled=true;
     importBtn.disabled=true;
@@ -1032,32 +1098,32 @@ async function login(showResult=true){
 
             if(remote.exists&&remoteFp!==meta.fingerprint){
                 status('offline','存在同步冲突');
-                lastSyncTime.textContent='已登录 · 本地和云端均有修改';
-                if(showResult)show('登录成功，但检测到本地与云端均有修改，请点击“同步”处理','error');
+                lastSyncTime.textContent='编辑已登录 · 本地和云端均有修改';
+                if(showResult)show('编辑登录成功，但检测到本地与云端均有修改，请点击“同步”处理','error');
             }else{
                 status('offline','有未同步修改');
-                lastSyncTime.textContent='已登录 · 正在恢复未同步修改';
+                lastSyncTime.textContent='编辑已登录 · 正在恢复未同步修改';
                 scheduleSync();
-                if(showResult)show('登录成功，已恢复本地未同步修改','success');
+                if(showResult)show('编辑登录成功，已恢复本地未同步修改','success');
             }
         }else{
             state=remote.state;
             setUnlocked(true);
             render();
             record(state,remote.sha);
-            status('online','已登录');
-            if(!remote.exists)lastSyncTime.textContent='已登录 · 数据文件尚未创建';
-            if(showResult)show('Token 验证成功，已解锁','success');
+            status('online','编辑已登录');
+            if(!remote.exists)lastSyncTime.textContent='编辑已登录 · 数据文件尚未创建';
+            if(showResult)show('Token 验证成功，已启用编辑','success');
         }
 
         return true;
     }catch(error){
         console.error(error);
-        state=[];
         setUnlocked(false);
-        status('offline','登录失败');
-        lastSyncTime.textContent='Token 验证失败，内容保持锁定';
-        show(`登录失败：${formatError(error)}`,'error');
+        if(publicLoaded||state.length)render();
+        status(publicLoaded?'online':'offline',publicLoaded?'公开浏览':'公开数据不可用');
+        lastSyncTime.textContent=publicLoaded?'公开浏览 · Token 验证失败':'公开数据未加载 · Token 验证失败';
+        if(showResult)show(`编辑登录失败：${formatError(error)}`,'error');
         return false;
     }
 }
@@ -1084,7 +1150,7 @@ async function sync(showResult=true,interactive=showResult){
 
         if(!remote.exists){
             if(baseline!==null&&interactive){
-                const recreate=confirm('云端数据文件已不存在。\n\n确定：用当前数据重新创建云端文件。\n取消：停止同步。');
+                const recreate=confirm('云端数据文件已不存在。\n\n确定：用当前 Cards 数据重新创建云端文件。\n取消：停止同步。');
                 if(!recreate){
                     status('offline','同步已取消');
                     return false;
@@ -1097,7 +1163,7 @@ async function sync(showResult=true,interactive=showResult){
 
             const sha=await writeRemote(localSnapshot,null);
             record(localSnapshot,sha);
-            status('online','已登录');
+            status('online','编辑已登录');
             if(showResult)show('同步完成','success');
             return true;
         }
@@ -1106,7 +1172,7 @@ async function sync(showResult=true,interactive=showResult){
 
         if(localFp===remoteFp){
             record(localSnapshot,remote.sha);
-            status('online','已登录');
+            status('online','编辑已登录');
             if(showResult)show('本地与云端已一致','success');
             return true;
         }
@@ -1117,7 +1183,7 @@ async function sync(showResult=true,interactive=showResult){
         if(baseline!==null&&localChanged&&!remoteChanged){
             const sha=await writeRemote(localSnapshot,remote.sha);
             record(localSnapshot,sha);
-            status('online','已登录');
+            status('online','编辑已登录');
             if(showResult)show('同步完成','success');
             return true;
         }
@@ -1126,7 +1192,7 @@ async function sync(showResult=true,interactive=showResult){
             state=remote.state;
             render();
             record(state,remote.sha);
-            status('online','已登录');
+            status('online','编辑已登录');
             if(showResult)show('已采用云端最新数据','success');
             return true;
         }
@@ -1146,7 +1212,7 @@ async function sync(showResult=true,interactive=showResult){
         if(useLocal){
             const sha=await writeRemote(localSnapshot,remote.sha);
             record(localSnapshot,sha);
-            status('online','已登录');
+            status('online','编辑已登录');
             show('已用当前网页数据覆盖云端','success');
             return true;
         }
@@ -1161,7 +1227,7 @@ async function sync(showResult=true,interactive=showResult){
             state=remote.state;
             render();
             record(state,remote.sha);
-            status('online','已登录');
+            status('online','编辑已登录');
             show('已采用云端数据','success');
             return true;
         }
@@ -1269,7 +1335,7 @@ function setupRichEditor(editor,toolbar){
 setupRichEditor(contentInput,contentToolbar);
 setupRichEditor(editContent,editToolbar);
 
-// ---------- 增删改 ----------
+// ---------- Cards 增删改 ----------
 function addEntry(){
     if(!unlocked)return;
     const title=String(titleInput.value??'').trim();
@@ -1330,7 +1396,7 @@ function deleteEntry(id){
     if(!unlocked)return;
     const item=state.find(x=>x.id===id);
     if(!item)return;
-    if(!confirm('确定删除吗？'))return;
+    if(!confirm('确定删除这条 Cards 吗？'))return;
     state=state.filter(x=>x.id!==id);
     markLocalChange();
     show('已删除','success');
@@ -1358,7 +1424,7 @@ function importFile(file){
     reader.onload=e=>{
         try{
             const incoming=normalizeState(JSON.parse(e.target.result));
-            if(!confirm('导入会替换当前数据，确定继续吗？'))return;
+            if(!confirm('导入会替换当前 Cards 数据，确定继续吗？'))return;
             state=incoming;
             markLocalChange();
             show('导入成功','success');
@@ -1472,14 +1538,19 @@ addEventListener('scroll',()=>{
 },{passive:true});
 
 // ---------- 启动 ----------
-loadConfig();
-loadMeta();
-setUnlocked(false);
-status('offline','未登录');
+(async()=>{
+    loadConfig();
+    loadMeta();
+    setUnlocked(false);
 
-if(adminConfigured()){
-    login(false);
-}
+    await loadPublicView();
+
+    // 本设备若已保存编辑 Token，则静默尝试恢复写权限；
+    // 即使 Token 失效，公开浏览也不会被锁住或清空。
+    if(adminConfigured()){
+        await login(false);
+    }
+})();
 })();
 </script>
 </body>
