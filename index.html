@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="app-build" content="2026-08-11-weibo-private-richtext-v2">
+<meta name="app-build" content="2026-08-11-cards-private-richtext-v2">
 <title>Cards</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -188,15 +188,15 @@ button{cursor:pointer}
     color:#94a3b8;
     pointer-events:none;
 }
-.rich-editor p,.rich-editor div,.weibo-content p,.weibo-content div{margin:.3em 0}
-.rich-editor ul,.rich-editor ol,.weibo-content ul,.weibo-content ol{padding-left:1.7em;margin:.45em 0}
-.rich-editor blockquote,.weibo-content blockquote{
+.rich-editor p,.rich-editor div,.cards-content p,.cards-content div{margin:.3em 0}
+.rich-editor ul,.rich-editor ol,.cards-content ul,.cards-content ol{padding-left:1.7em;margin:.45em 0}
+.rich-editor blockquote,.cards-content blockquote{
     margin:.55em 0;
     padding:.25em .8em;
     border-left:3px solid #cbd5e1;
     color:#475569;
 }
-.rich-editor hr,.weibo-content hr{
+.rich-editor hr,.cards-content hr{
     margin:1em 0;
     border:0;
     border-top:1px solid #cbd5e1;
@@ -231,19 +231,19 @@ button{cursor:pointer}
     font-size:.8rem;
     font-weight:650;
 }
-.weibo-list{
+.cards-list{
     overflow:hidden;
     border:1px solid #e2e8f0;
     border-radius:20px;
     background:#fff;
 }
-.weibo-item{
+.cards-item{
     padding:1.15rem 1.2rem .95rem;
     background:#fff;
 }
-.weibo-item+.weibo-item{border-top:2px solid #dbe3ed}
-.weibo-item:hover{background:#fafcff}
-.weibo-title{
+.cards-item+.cards-item{border-top:2px solid #dbe3ed}
+.cards-item:hover{background:#fafcff}
+.cards-title{
     margin-bottom:.55rem;
     color:#0f172a;
     font-size:1.15rem;
@@ -251,13 +251,13 @@ button{cursor:pointer}
     line-height:1.45;
     overflow-wrap:anywhere;
 }
-.weibo-content{
+.cards-content{
     overflow-wrap:anywhere;
     color:#0f172a;
     font-size:1rem;
     line-height:1.75;
 }
-.weibo-footer{
+.cards-footer{
     display:flex;
     align-items:flex-end;
     justify-content:space-between;
@@ -276,7 +276,7 @@ button{cursor:pointer}
 .edit-btn:hover{background:#bfdbfe}
 .delete-btn{background:#fee2e2;color:#991b1b}
 .delete-btn:hover{background:#fecaca}
-.weibo-date{
+.cards-date{
     margin-left:auto;
     color:#94a3b8;
     font-size:.8rem;
@@ -357,8 +357,8 @@ button{cursor:pointer}
     overflow:hidden;
 }
 #configForm{
-    height:min(720px,calc(var(--weibo-visible-height,100dvh) - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
-    max-height:calc(var(--weibo-visible-height,100dvh) - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    height:min(720px,calc(var(--cards-visible-height,100dvh) - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+    max-height:calc(var(--cards-visible-height,100dvh) - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
 }
 #configForm .dialog-scroll{
     flex:1 1 auto;
@@ -452,7 +452,7 @@ button{cursor:pointer}
     .add-section{padding:1.2rem}
     .rich-editor{min-height:8rem}
     .editor-btn{padding:.26rem .52rem}
-    .weibo-footer{align-items:flex-end}
+    .cards-footer{align-items:flex-end}
     .dialog{width:100%;border-radius:20px}
     .dialog-scroll{padding:1.2rem 1.2rem .8rem}
     .dialog-actions{padding:.85rem 1.2rem max(.85rem,env(safe-area-inset-bottom))}
@@ -464,8 +464,8 @@ button{cursor:pointer}
     }
     #configForm{
         width:100%;
-        height:calc(var(--weibo-visible-height,100dvh) - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-        max-height:calc(var(--weibo-visible-height,100dvh) - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        height:calc(var(--cards-visible-height,100dvh) - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        max-height:calc(var(--cards-visible-height,100dvh) - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
         border-radius:20px;
     }
     #configForm .dialog-scroll{
@@ -481,7 +481,7 @@ button{cursor:pointer}
 <body>
 <main class="container">
     <h1 class="page-title">
-        Weibo
+        Cards
         <span class="cloud-status">
             <span class="status-dot" id="statusDot"></span>
             <span id="statusText">未登录</span>
@@ -500,8 +500,8 @@ button{cursor:pointer}
     </section>
 
     <section class="locked-panel" id="lockedPanel">
-        <h2>需要 Token 登录</h2>
-        <p>微博内容处于锁定状态。请配置 GitHub 仓库和 Token；验证成功后才能阅读、添加、修改、删除和同步。</p>
+        <h2>需要Token登录</h2>
+        <p>验证成功后才能阅读、添加、修改、删除和同步。</p>
         <button class="btn btn-primary" id="lockedConfigBtn" type="button">配置 Token</button>
     </section>
 
@@ -540,8 +540,8 @@ button{cursor:pointer}
                 <h2>总表</h2>
                 <span class="count-badge" id="countDisplay">0</span>
             </div>
-            <div class="weibo-list" id="weiboList">
-                <div class="empty-state">暂无微博</div>
+            <div class="cards-list" id="cardsList">
+                <div class="empty-state">暂无</div>
             </div>
         </section>
     </div>
@@ -550,7 +550,7 @@ button{cursor:pointer}
 <section class="overlay hidden" id="editModal" role="dialog" aria-modal="true" aria-labelledby="editHeading">
     <div class="dialog">
         <div class="dialog-scroll">
-            <h3 id="editHeading">编辑微博</h3>
+            <h3 id="editHeading">编辑</h3>
             <div class="form-group">
                 <label for="editTitle">标题（可选）</label>
                 <input class="title-input" id="editTitle" type="text" autocomplete="off" placeholder="可留空">
@@ -588,7 +588,7 @@ button{cursor:pointer}
         <div class="dialog-scroll">
             <h3 id="configHeading">GitHub 登录配置</h3>
             <p class="dialog-desc">
-                只有 Token 验证成功后才显示微博内容。建议使用仅授权目标仓库、并具有 Contents 读取和写入权限的细粒度 Token。
+                建议使用仅授权目标仓库、并具有Contents读取和写入权限的细粒度 Token。
             </p>
             <div class="form-group">
                 <label for="cfgOwner">仓库所有者</label>
@@ -600,7 +600,7 @@ button{cursor:pointer}
             </div>
             <div class="form-group">
                 <label for="cfgFile">数据文件路径</label>
-                <input id="cfgFile" type="text" value="weibo_data.json" autocomplete="off">
+                <input id="cfgFile" type="text" value="cards_data.json" autocomplete="off">
             </div>
             <div class="form-group">
                 <label for="cfgToken">GitHub Personal Access Token</label>
@@ -639,7 +639,7 @@ function hashIdentity(value){
     }
     return (hash>>>0).toString(16).padStart(8,'0');
 }
-const NS=`weibo_private:${hashIdentity(pageIdentity())}`;
+const NS=`cards_private:${hashIdentity(pageIdentity())}`;
 const CONFIG_KEY=`${NS}:config`;
 const TOKEN_LOCAL_KEY=`${NS}:token_local`;
 const TOKEN_SESSION_KEY=`${NS}:token_session`;
@@ -654,14 +654,14 @@ const $=id=>document.getElementById(id);
 const statusDot=$('statusDot'),statusText=$('statusText'),syncBtn=$('syncBtn'),configBtn=$('configBtn'),
 exportBtn=$('exportBtn'),importBtn=$('importBtn'),fileInput=$('fileInput'),lastSyncTime=$('lastSyncTime'),
 lockedPanel=$('lockedPanel'),lockedConfigBtn=$('lockedConfigBtn'),appContent=$('appContent'),
-titleInput=$('titleInput'),contentInput=$('contentInput'),contentToolbar=$('contentToolbar'),addBtn=$('addBtn'),countDisplay=$('countDisplay'),weiboList=$('weiboList'),
+titleInput=$('titleInput'),contentInput=$('contentInput'),contentToolbar=$('contentToolbar'),addBtn=$('addBtn'),countDisplay=$('countDisplay'),cardsList=$('cardsList'),
 editModal=$('editModal'),editTitle=$('editTitle'),editContent=$('editContent'),editToolbar=$('editToolbar'),editCancel=$('editCancel'),editSave=$('editSave'),
 configModal=$('configModal'),configForm=$('configForm'),cfgOwner=$('cfgOwner'),cfgRepo=$('cfgRepo'),
 cfgFile=$('cfgFile'),cfgToken=$('cfgToken'),rememberToken=$('rememberToken'),configCancel=$('configCancel'),
 configSave=$('configSave'),backToTopBtn=$('backToTopBtn'),toast=$('toast');
 
 let state=[];
-let config={owner:'',repo:'',file:'weibo_data.json',token:''};
+let config={owner:'',repo:'',file:'cards_data.json',token:''};
 let meta={target:'',fingerprint:null,sha:null,lastSyncAt:null};
 let unlocked=false;
 let syncing=false;
@@ -672,7 +672,7 @@ let toastTimer=null;
 // ---------- 移动端可见视口 ----------
 function updateVisibleViewportHeight(){
     const height=window.visualViewport?.height||window.innerHeight;
-    document.documentElement.style.setProperty('--weibo-visible-height',`${Math.max(320,height)}px`);
+    document.documentElement.style.setProperty('--cards-visible-height',`${Math.max(320,height)}px`);
 }
 updateVisibleViewportHeight();
 window.addEventListener('resize',updateVisibleViewportHeight,{passive:true});
@@ -688,7 +688,7 @@ function attr(v){return esc(v).replace(/"/g,'&quot;')}
 function uid(){
     return crypto?.randomUUID
         ? crypto.randomUUID()
-        : `weibo_${Date.now()}_${Math.random().toString(36).slice(2,10)}`;
+        : `cards_${Date.now()}_${Math.random().toString(36).slice(2,10)}`;
 }
 function validIso(v){
     const s=clean(v);
@@ -825,7 +825,7 @@ function loadConfig(){
     try{saved=JSON.parse(localGet(CONFIG_KEY)||'{}')||{}}catch(e){}
     config.owner=clean(saved.owner);
     config.repo=clean(saved.repo);
-    config.file=clean(saved.file)||'weibo_data.json';
+    config.file=clean(saved.file)||'cards_data.json';
     config.token=clean(localGet(TOKEN_LOCAL_KEY)||sessionGet(TOKEN_SESSION_KEY)||'');
 }
 function saveConfig(){
@@ -881,7 +881,7 @@ function setUnlocked(on){
     importBtn.disabled=!unlocked;
     if(!unlocked){
         countDisplay.textContent='0';
-        weiboList.innerHTML='<div class="empty-state">内容已锁定</div>';
+        cardsList.innerHTML='<div class="empty-state">内容已锁定</div>';
     }
 }
 
@@ -962,7 +962,7 @@ async function writeRemote(snapshot,sha){
         throw new Error('数据超过 750 KB');
     }
     const body={
-        message:`更新 Weibo 数据 - ${new Date().toLocaleString()}`,
+        message:`更新 Cards 数据 - ${new Date().toLocaleString()}`,
         content:utf8ToBase64(raw)
     };
     if(sha)body.sha=sha;
@@ -977,21 +977,21 @@ function render(){
     countDisplay.textContent=String(state.length);
 
     if(!state.length){
-        weiboList.innerHTML='<div class="empty-state">暂无微博</div>';
+        cardsList.innerHTML='<div class="empty-state">暂无</div>';
         saveCache();
         return;
     }
 
-    weiboList.innerHTML=state.map(item=>`
-        <article class="weibo-item">
-            ${item.title?`<h3 class="weibo-title">${esc(item.title)}</h3>`:''}
-            <div class="weibo-content">${sanitizeHtml(item.content)}</div>
-            <div class="weibo-footer">
+    cardsList.innerHTML=state.map(item=>`
+        <article class="cards-item">
+            ${item.title?`<h3 class="cards-title">${esc(item.title)}</h3>`:''}
+            <div class="cards-content">${sanitizeHtml(item.content)}</div>
+            <div class="cards-footer">
                 <div class="item-actions">
                     <button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">编辑</button>
                     <button class="action-btn delete-btn" data-id="${attr(item.id)}" type="button">删除</button>
                 </div>
-                <time class="weibo-date" datetime="${attr(item.createdAt)}">${formatDate(item.createdAt)}</time>
+                <time class="cards-date" datetime="${attr(item.createdAt)}">${formatDate(item.createdAt)}</time>
             </div>
         </article>
     `).join('');
@@ -1084,7 +1084,7 @@ async function sync(showResult=true,interactive=showResult){
 
         if(!remote.exists){
             if(baseline!==null&&interactive){
-                const recreate=confirm('云端数据文件已不存在。\n\n确定：用当前微博数据重新创建云端文件。\n取消：停止同步。');
+                const recreate=confirm('云端数据文件已不存在。\n\n确定：用当前数据重新创建云端文件。\n取消：停止同步。');
                 if(!recreate){
                     status('offline','同步已取消');
                     return false;
@@ -1269,7 +1269,7 @@ function setupRichEditor(editor,toolbar){
 setupRichEditor(contentInput,contentToolbar);
 setupRichEditor(editContent,editToolbar);
 
-// ---------- 微博增删改 ----------
+// ---------- 增删改 ----------
 function addEntry(){
     if(!unlocked)return;
     const title=String(titleInput.value??'').trim();
@@ -1330,7 +1330,7 @@ function deleteEntry(id){
     if(!unlocked)return;
     const item=state.find(x=>x.id===id);
     if(!item)return;
-    if(!confirm('确定删除这条微博吗？'))return;
+    if(!confirm('确定删除吗？'))return;
     state=state.filter(x=>x.id!==id);
     markLocalChange();
     show('已删除','success');
@@ -1344,7 +1344,7 @@ function downloadJson(){
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
     a.href=url;
-    a.download=`weibo_backup_${formatDate(new Date().toISOString())}.json`;
+    a.download=`cards_backup_${formatDate(new Date().toISOString())}.json`;
     a.click();
     URL.revokeObjectURL(url);
 }
@@ -1358,7 +1358,7 @@ function importFile(file){
     reader.onload=e=>{
         try{
             const incoming=normalizeState(JSON.parse(e.target.result));
-            if(!confirm('导入会替换当前微博数据，确定继续吗？'))return;
+            if(!confirm('导入会替换当前数据，确定继续吗？'))return;
             state=incoming;
             markLocalChange();
             show('导入成功','success');
@@ -1373,7 +1373,7 @@ function importFile(file){
 function openConfig(){
     cfgOwner.value=config.owner;
     cfgRepo.value=config.repo;
-    cfgFile.value=config.file||'weibo_data.json';
+    cfgFile.value=config.file||'cards_data.json';
     cfgToken.value=config.token;
     rememberToken.checked=Boolean(localGet(TOKEN_LOCAL_KEY));
     updateVisibleViewportHeight();
@@ -1385,7 +1385,7 @@ async function submitConfig(event){
     event.preventDefault();
     const owner=clean(cfgOwner.value);
     const repo=clean(cfgRepo.value);
-    const file=clean(cfgFile.value)||'weibo_data.json';
+    const file=clean(cfgFile.value)||'cards_data.json';
     const token=clean(cfgToken.value);
 
     if(!owner||!repo||!token){
@@ -1421,7 +1421,7 @@ contentInput.addEventListener('keydown',event=>{
     }
 });
 
-weiboList.addEventListener('click',event=>{
+cardsList.addEventListener('click',event=>{
     const edit=event.target.closest('.edit-btn');
     if(edit)return openEdit(edit.dataset.id);
     const del=event.target.closest('.delete-btn');
