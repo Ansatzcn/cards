@@ -519,11 +519,11 @@ button{cursor:pointer}
         <section class="add-section hidden" id="editorSection">
             <h2>添加</h2>
             <div class="form-group" style="margin-bottom:.9rem">
-                <label for="titleInput">标题（可选）</label>
+                <label for="titleInput">标题</label>
                 <input class="title-input" id="titleInput" type="text" autocomplete="off" placeholder="可留空">
             </div>
             <div class="form-group">
-                <label for="contentInput">内容（必填）</label>
+                <label for="contentInput">内容</label>
                 <div class="rich-editor-wrap">
                     <div class="rich-toolbar" id="contentToolbar" role="toolbar" aria-label="正文格式工具">
                         <button class="editor-btn" type="button" data-command="bold" title="加粗"><b>B</b></button>
@@ -562,11 +562,11 @@ button{cursor:pointer}
         <div class="dialog-scroll">
             <h3 id="editHeading">编辑 Cards</h3>
             <div class="form-group">
-                <label for="editTitle">标题（可选）</label>
+                <label for="editTitle">标题</label>
                 <input class="title-input" id="editTitle" type="text" autocomplete="off" placeholder="可留空">
             </div>
             <div class="form-group">
-                <label for="editContent">内容（必填）</label>
+                <label for="editContent">内容</label>
                 <div class="rich-editor-wrap">
                     <div class="rich-toolbar" id="editToolbar" role="toolbar" aria-label="编辑正文格式工具">
                         <button class="editor-btn" type="button" data-command="bold" title="加粗"><b>B</b></button>
@@ -1554,8 +1554,8 @@ addEventListener('scroll',()=>{
 
     await loadPublicView();
 
-    // 本设备若已保存编辑 Token，则静默尝试恢复写权限；
-    // 即使 Token 失效，公开浏览也不会被锁住或清空。
+    // 本设备若已保存编辑Token，则静默尝试恢复写权限；
+    // 即使Token失效，公开浏览也不会被锁住或清空。
     if(adminConfigured()){
         await login(false);
     }
