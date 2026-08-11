@@ -261,11 +261,18 @@ button{cursor:pointer}
 .cards-footer{
     display:flex;
     align-items:flex-end;
-    justify-content:space-between;
+    justify-content:flex-start;
     gap:12px;
     margin-top:.9rem;
+    width:100%;
 }
-.item-actions{display:flex;gap:6px;flex-wrap:wrap;margin-left:auto}
+.item-actions{
+    display:flex;
+    gap:6px;
+    flex-wrap:wrap;
+    margin-left:auto;
+    justify-content:flex-end;
+}
 .action-btn{
     padding:.28rem .72rem;
     border:0;
@@ -278,11 +285,13 @@ button{cursor:pointer}
 .delete-btn{background:#fee2e2;color:#991b1b}
 .delete-btn:hover{background:#fecaca}
 .cards-date{
-    margin-left:auto;
+    margin-left:0;
+    margin-right:0;
     color:#94a3b8;
     font-size:.8rem;
     white-space:nowrap;
-    text-align:right;
+    text-align:left;
+    flex:0 0 auto;
 }
 .empty-state{
     padding:2.8rem 1rem;
@@ -1545,8 +1554,8 @@ addEventListener('scroll',()=>{
 
     await loadPublicView();
 
-    // 本设备若已保存编辑Token，则静默尝试恢复写权限；
-    // 即使Token失效，公开浏览也不会被锁住或清空。
+    // 本设备若已保存编辑 Token，则静默尝试恢复写权限；
+    // 即使 Token 失效，公开浏览也不会被锁住或清空。
     if(adminConfigured()){
         await login(false);
     }
