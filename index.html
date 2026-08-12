@@ -261,6 +261,8 @@ button{cursor:pointer}
     font-size:1rem;
     line-height:1.75;
 }
+.cards-content a{color:#2563eb;text-decoration:none}
+.cards-content a:hover,.cards-content a:focus-visible{color:#1d4ed8;text-decoration:underline;outline:none}
 .cards-footer{
     display:flex;
     align-items:flex-end;
@@ -716,9 +718,28 @@ function validIso(v){
     return s&&!Number.isNaN(Date.parse(s))?new Date(s).toISOString():'';
 }
 const ALLOWED_TAGS=new Set(['B','STRONG','I','EM','U','S','STRIKE','P','DIV','BR','HR','UL','OL','LI','BLOCKQUOTE']);
+function normalizeHttpUrl(value){
+    const url=String(value??'').trim();
+    return /^https?:\/\/[^\s<>()]+$/i.test(url)?url:'';
+}
+function anchorToMarkdownText(anchor){
+    const label=(anchor.textContent||'').replace(/\u00a0/g,' ').trim();
+    const url=normalizeHttpUrl(anchor.getAttribute('href'));
+    if(!url)return label;
+    if(/^\[[^\]\r\n]+\]\(https?:\/\/[^\s<>()]+\)$/i.test(label))return label;
+    return `[${label||url}](${url})`;
+}
+function replaceAnchorsWithMarkdown(root){
+    [...root.querySelectorAll('a')].forEach(anchor=>{
+        anchor.replaceWith(document.createTextNode(anchorToMarkdownText(anchor)));
+    });
+}
 function sanitizeHtml(value){
     const template=document.createElement('template');
     template.innerHTML=String(value??'');
+
+    // 存储层永远不保存 <a>：任何现有/粘贴进来的链接都还原为 [文字](链接)。
+    replaceAnchorsWithMarkdown(template.content);
 
     const cleanNode=node=>{
         for(const child of [...node.childNodes]){
@@ -747,6 +768,56 @@ function sanitizeHtml(value){
 
     cleanNode(template.content);
     return template.innerHTML.trim();
+}
+function renderMarkdownLinks(value){
+    const template=document.createElement('template');
+    template.innerHTML=sanitizeHtml(value);
+    const regex=/\[([^\]\r\n]+)\]\((https?:\/\/[^\s<>()]+)\)/gi;
+    const walker=document.createTreeWalker(template.content,NodeFilter.SHOW_TEXT);
+    const nodes=[];
+    while(walker.nextNode())nodes.push(walker.currentNode);
+
+    for(const node of nodes){
+        const text=node.nodeValue||'';
+        regex.lastIndex=0;
+        if(!regex.test(text))continue;
+        regex.lastIndex=0;
+        const fragment=document.createDocumentFragment();
+        let last=0,match;
+        while((match=regex.exec(text))){
+            if(match.index>last)fragment.appendChild(document.createTextNode(text.slice(last,match.index)));
+            const link=document.createElement('a');
+            link.href=match[2];
+            link.target='_blank';
+            link.rel='noopener noreferrer';
+            link.textContent=match[1];
+            fragment.appendChild(link);
+            last=regex.lastIndex;
+        }
+        if(last<text.length)fragment.appendChild(document.createTextNode(text.slice(last)));
+        node.replaceWith(fragment);
+    }
+    return template.innerHTML;
+}
+function clipboardHtmlToMarkdownText(html,fallback=''){
+    const template=document.createElement('template');
+    template.innerHTML=String(html||'');
+    const blockTags=new Set(['P','DIV','LI','BLOCKQUOTE','UL','OL','H1','H2','H3','H4','H5','H6','PRE']);
+    const read=node=>{
+        if(node.nodeType===Node.TEXT_NODE)return node.nodeValue||'';
+        if(node.nodeType!==Node.ELEMENT_NODE&&node.nodeType!==Node.DOCUMENT_FRAGMENT_NODE)return '';
+        if(node.nodeType===Node.ELEMENT_NODE){
+            const tag=node.tagName.toUpperCase();
+            if(tag==='BR')return '\n';
+            if(tag==='A')return anchorToMarkdownText(node);
+            let inner=[...node.childNodes].map(read).join('');
+            if(blockTags.has(tag)&&inner&&!inner.endsWith('\n'))inner+='\n';
+            return inner;
+        }
+        return [...node.childNodes].map(read).join('');
+    };
+    const result=read(template.content).replace(/\r\n?/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+    return result||String(fallback||'');
 }
 function plainTextToHtml(value){
     const text=String(value??'').replace(/\r\n?/g,'\n').trim();
@@ -1059,7 +1130,7 @@ function render(){
     cardsList.innerHTML=state.map(item=>`
         <article class="cards-item">
             ${item.title?`<h3 class="cards-title">${esc(item.title)}</h3>`:''}
-            <div class="cards-content">${sanitizeHtml(item.content)}</div>
+            <div class="cards-content">${renderMarkdownLinks(item.content)}</div>
             <div class="cards-footer">
                 <time class="cards-date" datetime="${attr(item.createdAt)}">${formatDate(item.createdAt)}</time>
                 ${unlocked?`
@@ -1338,9 +1409,11 @@ function setupRichEditor(editor,toolbar){
         runEditorAction(editor,button);
     });
     editor.addEventListener('paste',event=>{
-        // 只接收纯文本粘贴，避免把外部网页样式、脚本或跟踪属性带入数据。
+        // 粘贴时仍只插入文本；若剪贴板里实际是 <a>，先还原为 [文字](链接)。
         event.preventDefault();
-        const text=event.clipboardData?.getData('text/plain')||'';
+        const plain=event.clipboardData?.getData('text/plain')||'';
+        const html=event.clipboardData?.getData('text/html')||'';
+        const text=html?clipboardHtmlToMarkdownText(html,plain):plain;
         document.execCommand('insertText',false,text);
     });
 }
