@@ -524,7 +524,7 @@ button{cursor:pointer}
             <h2>添加</h2>
             <div class="form-group" style="margin-bottom:.9rem">
                 <label for="titleInput">标题</label>
-                <input class="title-input" id="titleInput" type="text" autocomplete="off" placeholder="可留空">
+                <input class="title-input" id="titleInput" type="text" autocomplete="off">
             </div>
             <div class="form-group">
                 <label for="contentInput">内容</label>
@@ -543,7 +543,7 @@ button{cursor:pointer}
                         <button class="editor-btn" type="button" data-command="redo" title="重做">重做</button>
                         <button class="editor-btn" type="button" data-command="removeFormat" title="清除格式">清除格式</button>
                     </div>
-                    <div class="rich-editor" id="contentInput" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="请输入内容；Ctrl / ⌘ + Enter 提交"></div>
+                    <div class="rich-editor" id="contentInput" contenteditable="true" role="textbox" aria-multiline="true"></div>
                 </div>
             </div>
             <button class="add-button" id="addBtn" type="button">提交</button>
