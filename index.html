@@ -236,16 +236,20 @@ button{cursor:pointer}
     font-weight:650;
 }
 .cards-list{
-    overflow:hidden;
+    display:grid;
+    gap:1rem;
+    overflow:visible;
+    border:0;
+    border-radius:0;
+    background:transparent;
+}
+.cards-item{
+    padding:1.15rem 1.2rem .95rem;
     border:1px solid #e2e8f0;
     border-radius:20px;
     background:#fff;
 }
-.cards-item{
-    padding:1.15rem 1.2rem .95rem;
-    background:#fff;
-}
-.cards-item+.cards-item{border-top:2px solid #dbe3ed}
+.cards-item+.cards-item{border-top:1px solid #e2e8f0}
 .cards-item:hover{background:#fafcff}
 .cards-title{
     margin-bottom:.55rem;
