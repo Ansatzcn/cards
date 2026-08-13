@@ -91,6 +91,8 @@ button{cursor:pointer}
 .btn-primary:hover{background:#0f172a}
 .btn-sync{border-color:#2563eb;background:#2563eb;color:#fff}
 .btn-sync:hover{background:#1d4ed8}
+.btn-danger{border-color:#fecaca;background:#fee2e2;color:#991b1b}
+.btn-danger:hover{background:#fecaca}
 .last-sync{color:#94a3b8;font-size:.8rem}
 
 .visitor-note{
@@ -162,6 +164,10 @@ button{cursor:pointer}
     padding:.55rem;
     border-bottom:1px solid #e2e8f0;
     background:#f8fafc;
+}
+#contentToolbar{
+    border-top:1px solid #e2e8f0;
+    border-bottom:0;
 }
 .editor-btn{
     min-width:34px;
@@ -533,6 +539,7 @@ button{cursor:pointer}
             <div class="form-group">
                 <label for="contentInput">内容</label>
                 <div class="rich-editor-wrap">
+                    <div class="rich-editor" id="contentInput" contenteditable="true" role="textbox" aria-multiline="true"></div>
                     <div class="rich-toolbar" id="contentToolbar" role="toolbar" aria-label="正文格式工具">
                         <button class="editor-btn" type="button" data-command="bold" title="加粗"><b>B</b></button>
                         <button class="editor-btn" type="button" data-command="italic" title="斜体"><i>I</i></button>
@@ -547,7 +554,6 @@ button{cursor:pointer}
                         <button class="editor-btn" type="button" data-command="redo" title="重做">重做</button>
                         <button class="editor-btn" type="button" data-command="removeFormat" title="清除格式">清除格式</button>
                     </div>
-                    <div class="rich-editor" id="contentInput" contenteditable="true" role="textbox" aria-multiline="true"></div>
                 </div>
             </div>
             <button class="add-button" id="addBtn" type="button">提交</button>
@@ -595,6 +601,7 @@ button{cursor:pointer}
             </div>
         </div>
         <div class="dialog-actions">
+            <button class="btn btn-danger" id="editDelete" type="button">删除</button>
             <button class="btn" id="editCancel" type="button">取消</button>
             <button class="btn btn-primary" id="editSave" type="button">保存</button>
         </div>
@@ -681,7 +688,7 @@ const statusDot=$('statusDot'),statusText=$('statusText'),syncBtn=$('syncBtn'),c
 exportBtn=$('exportBtn'),importBtn=$('importBtn'),fileInput=$('fileInput'),lastSyncTime=$('lastSyncTime'),
 lockedPanel=$('lockedPanel'),lockedConfigBtn=$('lockedConfigBtn'),appContent=$('appContent'),editorSection=$('editorSection'),
 titleInput=$('titleInput'),contentInput=$('contentInput'),contentToolbar=$('contentToolbar'),addBtn=$('addBtn'),countDisplay=$('countDisplay'),cardsList=$('cardsList'),
-editModal=$('editModal'),editTitle=$('editTitle'),editContent=$('editContent'),editToolbar=$('editToolbar'),editCancel=$('editCancel'),editSave=$('editSave'),
+editModal=$('editModal'),editTitle=$('editTitle'),editContent=$('editContent'),editToolbar=$('editToolbar'),editDelete=$('editDelete'),editCancel=$('editCancel'),editSave=$('editSave'),
 configModal=$('configModal'),configForm=$('configForm'),cfgOwner=$('cfgOwner'),cfgRepo=$('cfgRepo'),
 cfgFile=$('cfgFile'),cfgToken=$('cfgToken'),rememberToken=$('rememberToken'),configCancel=$('configCancel'),
 configSave=$('configSave'),backToTopBtn=$('backToTopBtn'),toast=$('toast');
@@ -1140,7 +1147,6 @@ function render(){
                 ${unlocked?`
                 <div class="item-actions">
                     <button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">编辑</button>
-                    <button class="action-btn delete-btn" data-id="${attr(item.id)}" type="button">删除</button>
                 </div>`:''}
             </div>
         </article>
@@ -1482,13 +1488,14 @@ function saveEdit(){
     show('已保存','success');
 }
 function deleteEntry(id){
-    if(!unlocked)return;
+    if(!unlocked)return false;
     const item=state.find(x=>x.id===id);
-    if(!item)return;
-    if(!confirm('确定删除这条 Cards 吗？'))return;
+    if(!item)return false;
+    if(!confirm('确定删除这条 Cards 吗？'))return false;
     state=state.filter(x=>x.id!==id);
     markLocalChange();
     show('已删除','success');
+    return true;
 }
 
 // ---------- 导入导出 ----------
@@ -1579,10 +1586,15 @@ contentInput.addEventListener('keydown',event=>{
 cardsList.addEventListener('click',event=>{
     const edit=event.target.closest('.edit-btn');
     if(edit)return openEdit(edit.dataset.id);
-    const del=event.target.closest('.delete-btn');
-    if(del)deleteEntry(del.dataset.id);
 });
 
+editDelete.addEventListener('click',()=>{
+    if(!editingId)return;
+    if(deleteEntry(editingId)){
+        editingId='';
+        editModal.classList.add('hidden');
+    }
+});
 editCancel.addEventListener('click',()=>{
     editingId='';
     editModal.classList.add('hidden');
