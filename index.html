@@ -165,7 +165,8 @@ button{cursor:pointer}
     border-bottom:1px solid #e2e8f0;
     background:#f8fafc;
 }
-#contentToolbar{
+#contentToolbar,
+#editToolbar{
     border-top:1px solid #e2e8f0;
     border-bottom:0;
 }
@@ -582,6 +583,7 @@ button{cursor:pointer}
             <div class="form-group">
                 <label for="editContent">内容</label>
                 <div class="rich-editor-wrap">
+                    <div class="rich-editor" id="editContent" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="请输入内容；Ctrl / ⌘ + Enter 保存"></div>
                     <div class="rich-toolbar" id="editToolbar" role="toolbar" aria-label="编辑正文格式工具">
                         <button class="editor-btn" type="button" data-command="bold" title="加粗"><b>B</b></button>
                         <button class="editor-btn" type="button" data-command="italic" title="斜体"><i>I</i></button>
@@ -596,7 +598,6 @@ button{cursor:pointer}
                         <button class="editor-btn" type="button" data-command="redo" title="重做">重做</button>
                         <button class="editor-btn" type="button" data-command="removeFormat" title="清除格式">清除格式</button>
                     </div>
-                    <div class="rich-editor" id="editContent" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="请输入内容；Ctrl / ⌘ + Enter 保存"></div>
                 </div>
             </div>
         </div>
