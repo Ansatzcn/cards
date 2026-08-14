@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="app-build" content="2026-08-11-cards-public-read-token-edit-v3">
+<meta name="app-build" content="2026-08-14-cards-mobile-editor-scroll-v4">
 <meta name="cards-data-file" content="cards_data.json">
 <title>Cards</title>
 <style>
@@ -147,6 +147,7 @@ button{cursor:pointer}
     border-color:transparent;
 }
 .rich-editor-wrap{
+    position:relative;
     overflow:hidden;
     border:1px solid #cbd5e1;
     border-radius:16px;
@@ -187,12 +188,43 @@ button{cursor:pointer}
     width:100%;
     min-height:8.4rem;
     max-height:420px;
-    overflow:auto;
+    overflow-y:scroll;
+    overflow-x:hidden;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+    touch-action:pan-y;
+    scrollbar-gutter:stable;
+    scrollbar-width:thin;
+    scrollbar-color:#94a3b8 #f1f5f9;
     padding:.9rem 1rem;
     color:#0f172a;
     outline:none;
     line-height:1.75;
     overflow-wrap:anywhere;
+}
+.rich-editor::-webkit-scrollbar{
+    width:10px;
+}
+.rich-editor::-webkit-scrollbar-track{
+    background:#f1f5f9;
+    border-left:1px solid #e2e8f0;
+}
+.rich-editor::-webkit-scrollbar-thumb{
+    min-height:42px;
+    background:#94a3b8;
+    border:2px solid #f1f5f9;
+    border-radius:999px;
+}
+.rich-editor::-webkit-scrollbar-thumb:hover{background:#64748b}
+/* iOS/部分安卓浏览器会自动隐藏原生滚动条：手机端额外显示同步滚动位置的细滚动条。 */
+.rich-editor-scrollbar{display:none}
+.rich-editor-scrollbar-thumb{
+    position:absolute;
+    inset:0 auto auto 0;
+    width:100%;
+    border-radius:999px;
+    background:#64748b;
+    transform:translateY(0);
 }
 .rich-editor:empty::before{
     content:attr(data-placeholder);
@@ -476,7 +508,29 @@ button{cursor:pointer}
     .toolbar-group{justify-content:center}
     .last-sync{text-align:center}
     .add-section{padding:1.2rem}
-    .rich-editor{min-height:8rem}
+    /* 手机端固定编辑区高度，让手指始终在编辑框内部滚动，而不是把整页越撑越长。 */
+    .rich-editor{
+        min-height:170px;
+        height:clamp(170px,36dvh,300px);
+        max-height:300px;
+        overflow-y:scroll;
+        padding-right:.8rem;
+    }
+    .rich-editor::-webkit-scrollbar{width:8px}
+    .rich-editor::-webkit-scrollbar-thumb{min-height:48px}
+    .rich-editor-scrollbar{
+        position:absolute;
+        right:3px;
+        z-index:4;
+        display:block;
+        width:4px;
+        border-radius:999px;
+        background:rgba(148,163,184,.22);
+        opacity:0;
+        pointer-events:none;
+        transition:opacity .15s ease;
+    }
+    .rich-editor-scrollbar.visible{opacity:.9}
     .editor-btn{padding:.26rem .52rem}
     .cards-footer{align-items:flex-end}
     .dialog{width:100%;border-radius:20px}
@@ -1409,7 +1463,58 @@ function runEditorAction(editor,button){
     }
     editor.focus();
 }
+function setupEditorScrollIndicator(editor){
+    const wrap=editor.closest('.rich-editor-wrap');
+    if(!wrap)return;
+
+    const track=document.createElement('div');
+    const thumb=document.createElement('div');
+    track.className='rich-editor-scrollbar';
+    thumb.className='rich-editor-scrollbar-thumb';
+    track.setAttribute('aria-hidden','true');
+    track.appendChild(thumb);
+    wrap.appendChild(track);
+
+    let raf=0;
+    const update=()=>{
+        raf=0;
+        const clientHeight=editor.clientHeight;
+        const scrollHeight=editor.scrollHeight;
+        const overflow=clientHeight>0&&scrollHeight>clientHeight+2;
+        track.classList.toggle('visible',overflow);
+        if(!overflow)return;
+
+        const trackHeight=Math.max(24,clientHeight-12);
+        const thumbHeight=Math.max(34,Math.min(trackHeight,trackHeight*clientHeight/scrollHeight));
+        const maxScroll=Math.max(1,scrollHeight-clientHeight);
+        const maxThumbTravel=Math.max(0,trackHeight-thumbHeight);
+        const thumbY=(editor.scrollTop/maxScroll)*maxThumbTravel;
+
+        track.style.top=`${editor.offsetTop+6}px`;
+        track.style.height=`${trackHeight}px`;
+        thumb.style.height=`${thumbHeight}px`;
+        thumb.style.transform=`translateY(${thumbY}px)`;
+    };
+    const scheduleUpdate=()=>{
+        if(raf)return;
+        raf=requestAnimationFrame(update);
+    };
+
+    editor.addEventListener('scroll',scheduleUpdate,{passive:true});
+    editor.addEventListener('input',scheduleUpdate);
+    window.addEventListener('resize',scheduleUpdate,{passive:true});
+    if(window.visualViewport){
+        window.visualViewport.addEventListener('resize',scheduleUpdate,{passive:true});
+    }
+    if('ResizeObserver' in window){
+        new ResizeObserver(scheduleUpdate).observe(editor);
+    }
+    new MutationObserver(scheduleUpdate).observe(editor,{childList:true,subtree:true,characterData:true});
+    scheduleUpdate();
+}
+
 function setupRichEditor(editor,toolbar){
+    setupEditorScrollIndicator(editor);
     toolbar.addEventListener('mousedown',event=>{
         const button=event.target.closest('.editor-btn');
         if(button)event.preventDefault();
