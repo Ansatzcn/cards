@@ -767,6 +767,7 @@ let publicLoaded=false;
 let syncing=false;
 let autoTimer=null;
 let editingId='';
+let editInitialSnapshot='';
 let toastTimer=null;
 
 // ---------- 移动端可见视口 ----------
@@ -1572,6 +1573,17 @@ function addEntry(){
     titleInput.focus();
     show('已提交','success');
 }
+function editSnapshot(){
+    return JSON.stringify({
+        title:String(editTitle.value??''),
+        content:getEditorHtml(editContent)
+    });
+}
+function closeEditModal(){
+    editingId='';
+    editInitialSnapshot='';
+    editModal.classList.add('hidden');
+}
 function openEdit(id){
     if(!unlocked)return;
     const item=state.find(x=>x.id===id);
@@ -1579,6 +1591,7 @@ function openEdit(id){
     editingId=id;
     editTitle.value=item.title||'';
     setEditorHtml(editContent,item.content);
+    editInitialSnapshot=editSnapshot();
     editModal.classList.remove('hidden');
     setTimeout(()=>editTitle.focus(),30);
 }
@@ -1599,8 +1612,7 @@ function saveEdit(){
     item.title=title;
     item.content=content;
     item.contentFormat='html';
-    editingId='';
-    editModal.classList.add('hidden');
+    closeEditModal();
     markLocalChange();
     show('已保存','success');
 }
@@ -1707,16 +1719,17 @@ cardsList.addEventListener('click',event=>{
 
 editDelete.addEventListener('click',()=>{
     if(!editingId)return;
-    if(deleteEntry(editingId)){
-        editingId='';
-        editModal.classList.add('hidden');
-    }
+    if(deleteEntry(editingId))closeEditModal();
 });
-editCancel.addEventListener('click',()=>{
-    editingId='';
-    editModal.classList.add('hidden');
-});
+editCancel.addEventListener('click',closeEditModal);
 editSave.addEventListener('click',saveEdit);
+
+// 仅在编辑内容完全没有变化时，点击弹窗外的遮罩区域自动关闭。
+// 使用 target===currentTarget，避免点击弹窗内部控件时被误判为“点击外部”。
+editModal.addEventListener('click',event=>{
+    if(event.target!==editModal||!editingId)return;
+    if(editSnapshot()===editInitialSnapshot)closeEditModal();
+});
 editTitle.addEventListener('keydown',event=>{
     if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){
         event.preventDefault();
@@ -1745,8 +1758,7 @@ fileInput.addEventListener('change',()=>{
 
 document.addEventListener('keydown',event=>{
     if(event.key!=='Escape')return;
-    editingId='';
-    editModal.classList.add('hidden');
+    closeEditModal();
     configModal.classList.add('hidden');
 });
 
