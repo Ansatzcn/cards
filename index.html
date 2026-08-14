@@ -344,10 +344,6 @@ button{cursor:pointer}
     line-height:1.45;
     overflow-wrap:anywhere;
 }
-.cards-source-label{
-    color:#94a3b8;
-    font-weight:650;
-}
 .item-actions{
     display:flex;
     gap:6px;
@@ -362,8 +358,8 @@ button{cursor:pointer}
     font-size:.82rem;
     font-weight:650;
 }
-.edit-btn{background:#dbeafe;color:#1e3a8a}
-.edit-btn:hover{background:#bfdbfe}
+.edit-btn{padding:0;border-radius:0;background:transparent;color:#94a3b8;font-weight:400;text-decoration:underline;text-underline-offset:2px}
+.edit-btn:hover{background:transparent;color:#64748b}
 .delete-btn{background:#fee2e2;color:#991b1b}
 .delete-btn:hover{background:#fecaca}
 .empty-state{
@@ -656,7 +652,7 @@ button{cursor:pointer}
             </div>
             <div class="form-group" style="margin-bottom:.9rem">
                 <label for="sourceInput">出处</label>
-                <input class="title-input" id="sourceInput" type="text" autocomplete="off" placeholder="可留空">
+                <input class="title-input" id="sourceInput" type="text" autocomplete="off">
             </div>
             <div class="form-group">
                 <label for="contentInput">内容</label>
@@ -703,7 +699,7 @@ button{cursor:pointer}
             </div>
             <div class="form-group">
                 <label for="editSource">出处</label>
-                <input class="title-input" id="editSource" type="text" autocomplete="off" placeholder="可留空">
+                <input class="title-input" id="editSource" type="text" autocomplete="off">
             </div>
             <div class="form-group">
                 <label for="editContent">内容</label>
@@ -1273,7 +1269,7 @@ function render(){
             <div class="cards-content">${renderMarkdownLinks(item.content)}</div>
             ${(item.source||unlocked)?`
             <div class="cards-footer">
-                ${item.source?`<div class="cards-source"><span class="cards-source-label">出处：</span>${esc(item.source)}</div>`:'<div class="cards-source"></div>'}
+                ${item.source?`<div class="cards-source">${esc(item.source)}</div>`:'<div class="cards-source"></div>'}
                 ${unlocked?`
                 <div class="item-actions">
                     <button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">编辑</button>
