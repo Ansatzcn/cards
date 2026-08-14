@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="app-build" content="2026-08-14-cards-editor-scroll-v5">
+<meta name="app-build" content="2026-08-15-source-footer-v6">
 <meta name="cards-data-file" content="cards_data.json">
 <title>Cards</title>
 <style>
@@ -331,15 +331,27 @@ button{cursor:pointer}
 .cards-footer{
     display:flex;
     align-items:flex-end;
-    justify-content:flex-start;
+    justify-content:space-between;
     gap:12px;
     margin-top:.9rem;
     width:100%;
 }
+.cards-source{
+    min-width:0;
+    flex:1 1 auto;
+    color:#64748b;
+    font-size:.82rem;
+    line-height:1.45;
+    overflow-wrap:anywhere;
+}
+.cards-source-label{
+    color:#94a3b8;
+    font-weight:650;
+}
 .item-actions{
     display:flex;
     gap:6px;
-    flex-wrap:wrap;
+    flex:0 0 auto;
     margin-left:auto;
     justify-content:flex-end;
 }
@@ -354,15 +366,6 @@ button{cursor:pointer}
 .edit-btn:hover{background:#bfdbfe}
 .delete-btn{background:#fee2e2;color:#991b1b}
 .delete-btn:hover{background:#fecaca}
-.cards-date{
-    margin-left:0;
-    margin-right:0;
-    color:#94a3b8;
-    font-size:.8rem;
-    white-space:nowrap;
-    text-align:left;
-    flex:0 0 auto;
-}
 .empty-state{
     padding:2.8rem 1rem;
     background:#fafcff;
@@ -651,6 +654,10 @@ button{cursor:pointer}
                 <label for="titleInput">标题</label>
                 <input class="title-input" id="titleInput" type="text" autocomplete="off">
             </div>
+            <div class="form-group" style="margin-bottom:.9rem">
+                <label for="sourceInput">出处</label>
+                <input class="title-input" id="sourceInput" type="text" autocomplete="off" placeholder="可留空">
+            </div>
             <div class="form-group">
                 <label for="contentInput">内容</label>
                 <div class="rich-editor-wrap">
@@ -693,6 +700,10 @@ button{cursor:pointer}
             <div class="form-group">
                 <label for="editTitle">标题</label>
                 <input class="title-input" id="editTitle" type="text" autocomplete="off" placeholder="可留空">
+            </div>
+            <div class="form-group">
+                <label for="editSource">出处</label>
+                <input class="title-input" id="editSource" type="text" autocomplete="off" placeholder="可留空">
             </div>
             <div class="form-group">
                 <label for="editContent">内容</label>
@@ -802,8 +813,8 @@ const $=id=>document.getElementById(id);
 const statusDot=$('statusDot'),statusText=$('statusText'),syncBtn=$('syncBtn'),configBtn=$('configBtn'),
 exportBtn=$('exportBtn'),importBtn=$('importBtn'),fileInput=$('fileInput'),lastSyncTime=$('lastSyncTime'),
 lockedPanel=$('lockedPanel'),lockedConfigBtn=$('lockedConfigBtn'),appContent=$('appContent'),editorSection=$('editorSection'),
-titleInput=$('titleInput'),contentInput=$('contentInput'),contentToolbar=$('contentToolbar'),addBtn=$('addBtn'),countDisplay=$('countDisplay'),cardsList=$('cardsList'),
-editModal=$('editModal'),editTitle=$('editTitle'),editContent=$('editContent'),editToolbar=$('editToolbar'),editDelete=$('editDelete'),editCancel=$('editCancel'),editSave=$('editSave'),
+titleInput=$('titleInput'),sourceInput=$('sourceInput'),contentInput=$('contentInput'),contentToolbar=$('contentToolbar'),addBtn=$('addBtn'),countDisplay=$('countDisplay'),cardsList=$('cardsList'),
+editModal=$('editModal'),editTitle=$('editTitle'),editSource=$('editSource'),editContent=$('editContent'),editToolbar=$('editToolbar'),editDelete=$('editDelete'),editCancel=$('editCancel'),editSave=$('editSave'),
 configModal=$('configModal'),configForm=$('configForm'),cfgOwner=$('cfgOwner'),cfgRepo=$('cfgRepo'),
 cfgFile=$('cfgFile'),cfgToken=$('cfgToken'),rememberToken=$('rememberToken'),configCancel=$('configCancel'),
 configSave=$('configSave'),backToTopBtn=$('backToTopBtn'),toast=$('toast');
@@ -967,6 +978,7 @@ function setEditorHtml(editor,value){
 function normalizeEntry(x){
     if(!x||typeof x!=='object')return null;
     const title=String(x.title??'').trim();
+    const source=String(x.source??'').trim();
     const raw=String(x.content??'').trim();
     const content=x.contentFormat==='html'?sanitizeHtml(raw):plainTextToHtml(raw);
     const createdAt=validIso(x.createdAt);
@@ -974,6 +986,7 @@ function normalizeEntry(x){
     return{
         id:clean(x.id)||uid(),
         title,
+        source,
         content,
         contentFormat:'html',
         createdAt
@@ -1100,7 +1113,7 @@ function setUnlocked(on){
     syncBtn.disabled=!unlocked;
     importBtn.disabled=!unlocked;
     exportBtn.disabled=!publicLoaded&&!unlocked;
-    configBtn.textContent=unlocked?'编辑配置':'编辑登录';
+    configBtn.textContent=unlocked?'配置':'编辑登录';
 }
 
 // ---------- 公开只读数据 ----------
@@ -1258,13 +1271,14 @@ function render(){
         <article class="cards-item">
             ${item.title?`<h3 class="cards-title">${esc(item.title)}</h3>`:''}
             <div class="cards-content">${renderMarkdownLinks(item.content)}</div>
+            ${(item.source||unlocked)?`
             <div class="cards-footer">
-                <time class="cards-date" datetime="${attr(item.createdAt)}">${formatDate(item.createdAt)}</time>
+                ${item.source?`<div class="cards-source"><span class="cards-source-label">出处：</span>${esc(item.source)}</div>`:'<div class="cards-source"></div>'}
                 ${unlocked?`
                 <div class="item-actions">
                     <button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">编辑</button>
                 </div>`:''}
-            </div>
+            </div>`:''}
         </article>
     `).join('');
 
@@ -1655,6 +1669,7 @@ setupRichEditor(editContent,editToolbar);
 function addEntry(){
     if(!unlocked)return;
     const title=String(titleInput.value??'').trim();
+    const source=String(sourceInput.value??'').trim();
     const content=getEditorHtml(contentInput);
     if(!hasMeaningfulContent(content)){
         show('请输入内容','error');
@@ -1665,12 +1680,14 @@ function addEntry(){
     state.push({
         id:uid(),
         title,
+        source,
         content,
         contentFormat:'html',
         createdAt:new Date().toISOString()
     });
 
     titleInput.value='';
+    sourceInput.value='';
     contentInput.innerHTML='';
     markLocalChange();
     titleInput.focus();
@@ -1679,6 +1696,7 @@ function addEntry(){
 function editSnapshot(){
     return JSON.stringify({
         title:String(editTitle.value??''),
+        source:String(editSource.value??''),
         content:getEditorHtml(editContent)
     });
 }
@@ -1693,6 +1711,7 @@ function openEdit(id){
     if(!item)return;
     editingId=id;
     editTitle.value=item.title||'';
+    editSource.value=item.source||'';
     setEditorHtml(editContent,item.content);
     editInitialSnapshot=editSnapshot();
     editModal.classList.remove('hidden');
@@ -1715,6 +1734,7 @@ function saveEdit(){
     if(!item)return;
 
     const title=String(editTitle.value??'').trim();
+    const source=String(editSource.value??'').trim();
     const content=getEditorHtml(editContent);
     if(!hasMeaningfulContent(content)){
         show('内容不能为空','error');
@@ -1722,8 +1742,9 @@ function saveEdit(){
         return;
     }
 
-    // 编辑标题和内容，但保留原始提交时间，因此总表排序位置不会因编辑而改变。
+    // 编辑标题、出处和内容，但保留原始提交时间，因此总表排序位置不会因编辑而改变。
     item.title=title;
+    item.source=source;
     item.content=content;
     item.contentFormat='html';
     closeEditModal();
@@ -1819,6 +1840,12 @@ titleInput.addEventListener('keydown',event=>{
         addEntry();
     }
 });
+sourceInput.addEventListener('keydown',event=>{
+    if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){
+        event.preventDefault();
+        addEntry();
+    }
+});
 contentInput.addEventListener('keydown',event=>{
     if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){
         event.preventDefault();
@@ -1845,6 +1872,12 @@ editModal.addEventListener('click',event=>{
     if(editSnapshot()===editInitialSnapshot)closeEditModal();
 });
 editTitle.addEventListener('keydown',event=>{
+    if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){
+        event.preventDefault();
+        saveEdit();
+    }
+});
+editSource.addEventListener('keydown',event=>{
     if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){
         event.preventDefault();
         saveEdit();
