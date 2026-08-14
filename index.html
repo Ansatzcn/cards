@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="app-build" content="2026-08-14-cards-mobile-editor-scroll-v4">
+<meta name="app-build" content="2026-08-14-cards-editor-scroll-v5">
 <meta name="cards-data-file" content="cards_data.json">
 <title>Cards</title>
 <style>
@@ -216,16 +216,38 @@ button{cursor:pointer}
     border-radius:999px;
 }
 .rich-editor::-webkit-scrollbar-thumb:hover{background:#64748b}
-/* iOS/部分安卓浏览器会自动隐藏原生滚动条：手机端额外显示同步滚动位置的细滚动条。 */
-.rich-editor-scrollbar{display:none}
+/* 原生滚动条在部分桌面系统、iOS 和安卓浏览器中会自动隐藏。
+   因此正文编辑区始终配套一个可见且可拖动的滚动条；只有内容溢出时才显示。 */
+.rich-editor-scrollbar{
+    position:absolute;
+    right:3px;
+    z-index:6;
+    display:block;
+    width:7px;
+    border-radius:999px;
+    background:rgba(148,163,184,.28);
+    opacity:0;
+    pointer-events:none;
+    touch-action:none;
+    cursor:pointer;
+    transition:opacity .15s ease;
+}
+.rich-editor-scrollbar.visible{
+    opacity:.95;
+    pointer-events:auto;
+}
 .rich-editor-scrollbar-thumb{
     position:absolute;
     inset:0 auto auto 0;
     width:100%;
+    min-height:34px;
     border-radius:999px;
     background:#64748b;
     transform:translateY(0);
+    cursor:grab;
+    touch-action:none;
 }
+.rich-editor-scrollbar-thumb:active{cursor:grabbing}
 .rich-editor:empty::before{
     content:attr(data-placeholder);
     color:#94a3b8;
@@ -361,8 +383,9 @@ button{cursor:pointer}
     backdrop-filter:blur(5px);
 }
 .dialog{
+    position:relative;
     width:min(100%,620px);
-    max-height:calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    max-height:calc(var(--cards-visible-height,100dvh) - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
     display:flex;
     flex-direction:column;
     overflow:hidden;
@@ -371,11 +394,29 @@ button{cursor:pointer}
     box-shadow:0 30px 70px rgba(15,23,42,.28);
 }
 .dialog-scroll{
+    flex:1 1 auto;
     min-height:0;
-    overflow-y:auto;
+    overflow-y:scroll;
+    overflow-x:hidden;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
     scrollbar-gutter:stable;
+    scrollbar-width:thin;
+    scrollbar-color:#94a3b8 #f1f5f9;
     padding:1.7rem 1.7rem 1rem;
 }
+.dialog-scroll::-webkit-scrollbar{width:10px}
+.dialog-scroll::-webkit-scrollbar-track{
+    background:#f1f5f9;
+    border-left:1px solid #e2e8f0;
+}
+.dialog-scroll::-webkit-scrollbar-thumb{
+    min-height:42px;
+    background:#94a3b8;
+    border:2px solid #f1f5f9;
+    border-radius:999px;
+}
+.dialog-scroll::-webkit-scrollbar-thumb:hover{background:#64748b}
 .dialog h3{margin-bottom:.4rem;font-size:1.3rem}
 .dialog-desc{
     margin-bottom:1rem;
@@ -530,23 +571,31 @@ button{cursor:pointer}
     .rich-editor::-webkit-scrollbar{width:8px}
     .rich-editor::-webkit-scrollbar-thumb{min-height:48px}
     .rich-editor-scrollbar{
-        position:absolute;
         right:3px;
-        z-index:4;
-        display:block;
-        width:4px;
-        border-radius:999px;
-        background:rgba(148,163,184,.22);
-        opacity:0;
-        pointer-events:none;
-        transition:opacity .15s ease;
+        width:6px;
     }
-    .rich-editor-scrollbar.visible{opacity:.9}
     .editor-btn{padding:.26rem .52rem}
     .cards-footer{align-items:flex-end}
     .dialog{width:100%;border-radius:20px}
     .dialog-scroll{padding:1.2rem 1.2rem .8rem}
     .dialog-actions{padding:.85rem 1.2rem max(.85rem,env(safe-area-inset-bottom))}
+    #editModal{
+        align-items:stretch;
+        overflow:hidden;
+        padding:max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right))
+                max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left));
+    }
+    #editModal .dialog{
+        width:100%;
+        height:calc(var(--cards-visible-height,100dvh) - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        max-height:calc(var(--cards-visible-height,100dvh) - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        margin:auto 0;
+    }
+    #editModal .dialog-scroll{
+        flex:1 1 auto;
+        min-height:0;
+        overflow-y:scroll;
+    }
     .dialog-actions .btn{flex:1}
     #configModal{
         align-items:stretch;
@@ -1488,30 +1537,42 @@ function setupEditorScrollIndicator(editor){
     wrap.appendChild(track);
 
     let raf=0;
-    const update=()=>{
-        raf=0;
+    let drag=null;
+
+    const metrics=()=>{
         const clientHeight=editor.clientHeight;
         const scrollHeight=editor.scrollHeight;
-        const overflow=clientHeight>0&&scrollHeight>clientHeight+2;
+        const trackHeight=Math.max(24,clientHeight-12);
+        const thumbHeight=Math.max(34,Math.min(trackHeight,trackHeight*clientHeight/Math.max(scrollHeight,1)));
+        const maxScroll=Math.max(0,scrollHeight-clientHeight);
+        const maxThumbTravel=Math.max(0,trackHeight-thumbHeight);
+        return{clientHeight,scrollHeight,trackHeight,thumbHeight,maxScroll,maxThumbTravel};
+    };
+
+    const update=()=>{
+        raf=0;
+        const m=metrics();
+        const overflow=m.clientHeight>0&&m.scrollHeight>m.clientHeight+2;
         track.classList.toggle('visible',overflow);
         if(!overflow)return;
 
-        const trackHeight=Math.max(24,clientHeight-12);
-        const thumbHeight=Math.max(34,Math.min(trackHeight,trackHeight*clientHeight/scrollHeight));
-        const maxScroll=Math.max(1,scrollHeight-clientHeight);
-        const maxThumbTravel=Math.max(0,trackHeight-thumbHeight);
-        const thumbY=(editor.scrollTop/maxScroll)*maxThumbTravel;
+        const thumbY=m.maxScroll>0
+            ? (editor.scrollTop/m.maxScroll)*m.maxThumbTravel
+            : 0;
 
         track.style.top=`${editor.offsetTop+6}px`;
-        track.style.height=`${trackHeight}px`;
-        thumb.style.height=`${thumbHeight}px`;
+        track.style.height=`${m.trackHeight}px`;
+        thumb.style.height=`${m.thumbHeight}px`;
         thumb.style.transform=`translateY(${thumbY}px)`;
     };
+
     const scheduleUpdate=()=>{
         if(raf)return;
         raf=requestAnimationFrame(update);
     };
 
+    // 弹窗从 hidden 切换为可见后，显式触发此事件重新计算尺寸。
+    editor.addEventListener('editor-scroll-refresh',scheduleUpdate);
     editor.addEventListener('scroll',scheduleUpdate,{passive:true});
     editor.addEventListener('input',scheduleUpdate);
     window.addEventListener('resize',scheduleUpdate,{passive:true});
@@ -1522,6 +1583,48 @@ function setupEditorScrollIndicator(editor){
         new ResizeObserver(scheduleUpdate).observe(editor);
     }
     new MutationObserver(scheduleUpdate).observe(editor,{childList:true,subtree:true,characterData:true});
+
+    // 自定义滚动条可拖动；点击轨道也会跳转到对应位置。
+    track.addEventListener('pointerdown',event=>{
+        if(!track.classList.contains('visible'))return;
+        event.preventDefault();
+        const m=metrics();
+        const rect=track.getBoundingClientRect();
+
+        if(event.target===thumb){
+            drag={
+                pointerId:event.pointerId,
+                startY:event.clientY,
+                startScrollTop:editor.scrollTop,
+                maxScroll:m.maxScroll,
+                maxThumbTravel:m.maxThumbTravel
+            };
+            thumb.setPointerCapture?.(event.pointerId);
+            return;
+        }
+
+        if(m.maxThumbTravel<=0||m.maxScroll<=0)return;
+        const y=Math.max(0,Math.min(m.maxThumbTravel,event.clientY-rect.top-m.thumbHeight/2));
+        editor.scrollTop=(y/m.maxThumbTravel)*m.maxScroll;
+        scheduleUpdate();
+    });
+
+    thumb.addEventListener('pointermove',event=>{
+        if(!drag||event.pointerId!==drag.pointerId)return;
+        event.preventDefault();
+        if(drag.maxThumbTravel<=0||drag.maxScroll<=0)return;
+        const deltaY=event.clientY-drag.startY;
+        editor.scrollTop=drag.startScrollTop+(deltaY/drag.maxThumbTravel)*drag.maxScroll;
+        scheduleUpdate();
+    });
+
+    const endDrag=event=>{
+        if(!drag||event.pointerId!==drag.pointerId)return;
+        drag=null;
+    };
+    thumb.addEventListener('pointerup',endDrag);
+    thumb.addEventListener('pointercancel',endDrag);
+
     scheduleUpdate();
 }
 
@@ -1593,6 +1696,17 @@ function openEdit(id){
     setEditorHtml(editContent,item.content);
     editInitialSnapshot=editSnapshot();
     editModal.classList.remove('hidden');
+
+    // editContent 在弹窗隐藏时 clientHeight 为 0；显示后必须重新计算滚动条，
+    // 否则手机端可能有滚动能力但看不到滚动条。
+    requestAnimationFrame(()=>{
+        requestAnimationFrame(()=>{
+            editContent.dispatchEvent(new Event('editor-scroll-refresh'));
+            const dialogScroll=editModal.querySelector('.dialog-scroll');
+            if(dialogScroll)dialogScroll.scrollTop=0;
+        });
+    });
+
     setTimeout(()=>editTitle.focus(),30);
 }
 function saveEdit(){
