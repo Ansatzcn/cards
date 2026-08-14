@@ -410,6 +410,17 @@ button{cursor:pointer}
     background:#fff;
 }
 
+/* Cards 编辑弹窗：删除在左，取消/保存在右；删除与保存形成左右对称 */
+#editModal .dialog-actions{
+    justify-content:flex-end;
+}
+#editModal #editDelete{
+    margin-right:auto;
+}
+#editModal .dialog-actions .btn{
+    flex:0 0 auto;
+}
+
 /* 登录配置弹窗：内容独立滚动，底部按钮始终保留在可见区域 */
 #configModal{
     overflow:hidden;
