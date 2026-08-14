@@ -310,6 +310,7 @@ button{cursor:pointer}
     border-radius:20px;
     background:#fff;
 }
+.cards-item::after{content:"";display:block;clear:both}
 .cards-item+.cards-item{border-top:1px solid #e2e8f0}
 .cards-item:hover{background:#fafcff}
 .cards-title{
@@ -321,6 +322,7 @@ button{cursor:pointer}
     overflow-wrap:anywhere;
 }
 .cards-content{
+    clear:both;
     overflow-wrap:anywhere;
     color:#0f172a;
     font-size:1rem;
@@ -345,10 +347,10 @@ button{cursor:pointer}
     overflow-wrap:anywhere;
 }
 .item-actions{
+    float:right;
     display:flex;
     gap:6px;
-    flex:0 0 auto;
-    margin-left:auto;
+    margin:.08rem 0 .3rem 12px;
     justify-content:flex-end;
 }
 .action-btn{
@@ -1265,15 +1267,15 @@ function render(){
 
     cardsList.innerHTML=state.map(item=>`
         <article class="cards-item">
+            ${unlocked?`
+            <div class="item-actions">
+                <button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">编辑</button>
+            </div>`:''}
             ${item.title?`<h3 class="cards-title">${esc(item.title)}</h3>`:''}
             <div class="cards-content">${renderMarkdownLinks(item.content)}</div>
-            ${(item.source||unlocked)?`
+            ${item.source?`
             <div class="cards-footer">
-                ${item.source?`<div class="cards-source">${esc(item.source)}</div>`:'<div class="cards-source"></div>'}
-                ${unlocked?`
-                <div class="item-actions">
-                    <button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">编辑</button>
-                </div>`:''}
+                <div class="cards-source">${esc(item.source)}</div>
             </div>`:''}
         </article>
     `).join('');
