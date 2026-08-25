@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="app-build" content="2026-08-15-source-footer-v6">
+<meta name="app-build" content="2026-08-25-cards-title-sort-v1">
 <meta name="cards-data-file" content="cards_data.json">
 <title>Cards</title>
 <style>
@@ -281,43 +281,51 @@ button{cursor:pointer}
 
 .list-header{
     display:flex;
-    align-items:center;
     justify-content:space-between;
-    gap:12px;
-    margin-bottom:.8rem;
+    align-items:baseline;
+    flex-wrap:wrap;
+    gap:10px;
+    margin:1.8rem 0 .8rem;
 }
-.list-header h2{font-size:1.4rem}
+.list-header h2{
+    color:#0f172a;
+    font-size:1.5rem;
+    font-weight:600;
+}
 .count-badge{
-    min-width:38px;
-    padding:.22rem .8rem;
-    border-radius:999px;
-    background:#e8edf4;
+    padding:.2rem 1rem;
+    border-radius:40px;
+    background:#e9edf4;
+    color:#334155;
     text-align:center;
-    font-size:.8rem;
-    font-weight:650;
+    font-size:.9rem;
+    font-weight:500;
 }
+
 .cards-list{
-    display:grid;
-    gap:1rem;
-    overflow:visible;
-    border:0;
-    border-radius:0;
-    background:transparent;
-}
-.cards-item{
-    padding:1.15rem 1.2rem .95rem;
-    border:1px solid #e2e8f0;
+    display:block;
+    overflow:hidden;
+    margin-top:.5rem;
+    border:1px solid #e9edf4;
     border-radius:20px;
     background:#fff;
 }
+.cards-item{
+    padding:.9rem 1.2rem;
+    border:0;
+    border-bottom:1px solid #eef2f6;
+    border-radius:0;
+    background:#fff;
+    transition:background .15s;
+}
 .cards-item::after{content:"";display:block;clear:both}
-.cards-item+.cards-item{border-top:1px solid #e2e8f0}
+.cards-item:last-child{border-bottom:0}
 .cards-item:hover{background:#fafcff}
 .cards-title{
-    margin-bottom:.55rem;
+    margin-bottom:.45rem;
     color:#0f172a;
-    font-size:1.15rem;
-    font-weight:750;
+    font-size:1.08rem;
+    font-weight:600;
     line-height:1.45;
     overflow-wrap:anywhere;
 }
@@ -326,7 +334,8 @@ button{cursor:pointer}
     overflow-wrap:anywhere;
     color:#0f172a;
     font-size:1rem;
-    line-height:1.75;
+    font-weight:400;
+    line-height:1.68;
 }
 .cards-content a{color:#2563eb;text-decoration:none}
 .cards-content a:hover,.cards-content a:focus-visible{color:#1d4ed8;text-decoration:underline;outline:none}
@@ -335,23 +344,23 @@ button{cursor:pointer}
     align-items:flex-end;
     justify-content:space-between;
     gap:12px;
-    margin-top:.9rem;
     width:100%;
+    margin-top:.65rem;
 }
 .cards-source{
     min-width:0;
     flex:1 1 auto;
     color:#64748b;
-    font-size:1rem;
+    font-size:.95rem;
     line-height:1.45;
     overflow-wrap:anywhere;
 }
 .item-actions{
     float:right;
     display:flex;
+    justify-content:flex-end;
     gap:6px;
     margin:.08rem 0 .3rem 12px;
-    justify-content:flex-end;
 }
 .action-btn{
     padding:.28rem .72rem;
@@ -360,17 +369,30 @@ button{cursor:pointer}
     font-size:.82rem;
     font-weight:650;
 }
-.edit-btn{padding:0;border-radius:0;background:transparent;color:#94a3b8;font-weight:400;text-decoration:underline;text-underline-offset:2px}
-.edit-btn:hover{background:transparent;color:#64748b}
+.edit-btn{
+    padding:0;
+    border-radius:0;
+    background:transparent;
+    color:#64748b;
+    font-weight:500;
+    text-decoration:underline;
+    text-underline-offset:2px;
+}
+.edit-btn:hover,
+.edit-btn:focus-visible{
+    background:transparent;
+    color:#1e3a8a;
+    outline:none;
+}
 .delete-btn{background:#fee2e2;color:#991b1b}
 .delete-btn:hover{background:#fecaca}
 .empty-state{
-    padding:2.8rem 1rem;
+    padding:2.5rem 1rem;
     background:#fafcff;
     color:#94a3b8;
     text-align:center;
+    font-size:1.05rem;
 }
-
 .overlay{
     position:fixed;
     inset:0;
@@ -533,26 +555,46 @@ button{cursor:pointer}
 .toast.error{background:#dc2626}
 .toast.info{background:#2563eb}
 
-.back-to-top{
-    position:fixed;
-    right:16px;
-    top:70%;
-    z-index:900;
-    padding:.45rem .72rem;
-    transform:translateY(-50%);
-    border:1px solid rgba(148,163,184,.45);
-    border-radius:999px;
-    background:rgba(255,255,255,.82);
-    color:#64748b;
-    font-size:.76rem;
-    opacity:0;
-    visibility:hidden;
-    pointer-events:none;
-    transition:.2s;
+.back-to-top {
+    position: fixed;
+    right: 18px;
+    top: 70%;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform: translateY(-50%);
+    z-index: 900;
+    border: 0;
+    border-radius: 50%;
+    background: #AE0B2A;
+    color: white;
+    font-family: inherit;
+    font-size: 0.74rem;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(37, 99, 235, 0.28);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.2s ease, visibility 0.2s ease, background 0.2s ease,
+        color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
-.back-to-top.visible{opacity:.55;visibility:visible;pointer-events:auto}
-.back-to-top:hover{opacity:1}
-
+.back-to-top.visible {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+.back-to-top:hover,
+.back-to-top:focus-visible {
+    opacity: 1;
+    color: white;
+    background: #1d4ed8;
+    transform: translateY(-50%) translateX(-2px);
+    outline: none;
+}
 @media(max-width:700px){
     body{padding:.8rem}
     .container{padding:1.25rem;border-radius:22px}
@@ -577,6 +619,9 @@ button{cursor:pointer}
     }
     .editor-btn{padding:.26rem .52rem}
     .cards-footer{align-items:flex-end}
+    .cards-item{padding:.75rem .8rem}
+    .cards-title{font-size:1.02rem}
+    .cards-content{font-size:.95rem}
     .dialog{width:100%;border-radius:20px}
     .dialog-scroll{padding:1.2rem 1.2rem .8rem}
     .dialog-actions{padding:.85rem 1.2rem max(.85rem,env(safe-area-inset-bottom))}
@@ -615,7 +660,14 @@ button{cursor:pointer}
     #configForm .dialog-actions{
         padding:.85rem 1.2rem max(.85rem,env(safe-area-inset-bottom));
     }
-    .back-to-top{right:8px}
+    .back-to-top {
+        right: 8px;
+        top: 70%;
+        width: 29px;
+        height: 29px;
+        padding: 0;
+        font-size: 0.68rem;
+    }
 }
 </style>
 </head>
@@ -767,7 +819,7 @@ button{cursor:pointer}
     </form>
 </section>
 
-<button class="back-to-top" id="backToTopBtn" type="button" aria-label="回到顶部" title="回到顶部">↑</button>
+<button type="button" class="back-to-top" id="backToTopBtn" aria-label="回到顶部" title="回到顶部"></button>
 <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -990,16 +1042,68 @@ function normalizeEntry(x){
         createdAt
     };
 }
+const zhTitleCollator=new Intl.Collator('zh-CN-u-co-pinyin',{
+    sensitivity:'base',
+    numeric:true
+});
+const enTitleCollator=new Intl.Collator('en',{
+    sensitivity:'base',
+    numeric:true
+});
+
+function getTitleSortGroup(title){
+    const value=String(title??'').trim();
+    if(!value)return 4;
+
+    const first=value.charAt(0);
+    if(/[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/u.test(first))return 0;
+    if(/[A-Za-z]/.test(first))return 1;
+    if(/[0-9]/.test(first))return 2;
+    return 3;
+}
+
+function getLeadingNumber(title){
+    const match=String(title??'').trim().match(/^\d+(?:\.\d+)?/);
+    return match?Number(match[0]):Number.POSITIVE_INFINITY;
+}
+
+function compareCardsByTitle(a,b){
+    const aTitle=String(a.title??'').trim();
+    const bTitle=String(b.title??'').trim();
+    const aGroup=getTitleSortGroup(aTitle);
+    const bGroup=getTitleSortGroup(bTitle);
+
+    // 中文 → 英文 → 数字 → 其他符号 → 无标题
+    if(aGroup!==bGroup)return aGroup-bGroup;
+
+    let compared=0;
+    if(aGroup===0){
+        // 中文按拼音排序，相当于按汉字拼音首字母由 A 到 Z。
+        compared=zhTitleCollator.compare(aTitle,bTitle);
+    }else if(aGroup===1){
+        compared=enTitleCollator.compare(aTitle,bTitle);
+    }else if(aGroup===2){
+        const numberDiff=getLeadingNumber(aTitle)-getLeadingNumber(bTitle);
+        if(numberDiff!==0)return numberDiff;
+        compared=enTitleCollator.compare(aTitle,bTitle);
+    }else if(aGroup===3){
+        compared=zhTitleCollator.compare(aTitle,bTitle);
+    }
+
+    if(compared!==0)return compared;
+
+    // 完全同序时保持稳定：先录入的在前。
+    const byTime=Date.parse(a.createdAt)-Date.parse(b.createdAt);
+    if(byTime!==0)return byTime;
+    return String(a.id).localeCompare(String(b.id));
+}
+
 function normalizeState(value){
     const source=Array.isArray(value)?value:(value&&Array.isArray(value.entries)?value.entries:[]);
     return source
         .map(normalizeEntry)
         .filter(Boolean)
-        .sort((a,b)=>{
-            const byTime=Date.parse(b.createdAt)-Date.parse(a.createdAt);
-            if(byTime!==0)return byTime;
-            return String(b.id).localeCompare(String(a.id));
-        });
+        .sort(compareCardsByTitle);
 }
 function fingerprint(value=state){
     return JSON.stringify(normalizeState(value));
@@ -1907,10 +2011,31 @@ document.addEventListener('keydown',event=>{
     configModal.classList.add('hidden');
 });
 
-backToTopBtn.addEventListener('click',()=>scrollTo({top:0,behavior:'smooth'}));
-addEventListener('scroll',()=>{
-    backToTopBtn.classList.toggle('visible',scrollY>260);
-},{passive:true});
+function updateBackToTopVisibility(){
+    backToTopBtn.classList.toggle('visible',window.scrollY>240);
+}
+
+function fastScrollToTop(){
+    const startY=window.scrollY;
+    if(startY<=0)return;
+
+    const duration=50;
+    const startTime=performance.now();
+
+    function step(now){
+        const progress=Math.min((now-startTime)/duration,1);
+        const eased=1-Math.pow(1-progress,3);
+        window.scrollTo(0,Math.round(startY*(1-eased)));
+
+        if(progress<1)requestAnimationFrame(step);
+    }
+
+    requestAnimationFrame(step);
+}
+
+backToTopBtn.addEventListener('click',fastScrollToTop);
+window.addEventListener('scroll',updateBackToTopVisibility,{passive:true});
+updateBackToTopVisibility();
 
 // ---------- 启动 ----------
 (async()=>{
