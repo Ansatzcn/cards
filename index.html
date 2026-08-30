@@ -1032,7 +1032,7 @@ function normalizeEntry(x){
     const raw=String(x.content??'').trim();
     const content=x.contentFormat==='html'?sanitizeHtml(raw):plainTextToHtml(raw);
     const createdAt=validIso(x.createdAt);
-    if(!hasMeaningfulContent(content)||!createdAt)return null;
+    if((!title&&!hasMeaningfulContent(content))||!createdAt)return null;
     return{
         id:clean(x.id)||uid(),
         title,
@@ -1773,9 +1773,9 @@ function addEntry(){
     const title=String(titleInput.value??'').trim();
     const source=String(sourceInput.value??'').trim();
     const content=getEditorHtml(contentInput);
-    if(!hasMeaningfulContent(content)){
-        show('请输入内容','error');
-        contentInput.focus();
+    if(!title&&!hasMeaningfulContent(content)){
+        show('请输入标题或内容','error');
+        titleInput.focus();
         return;
     }
 
@@ -1838,9 +1838,9 @@ function saveEdit(){
     const title=String(editTitle.value??'').trim();
     const source=String(editSource.value??'').trim();
     const content=getEditorHtml(editContent);
-    if(!hasMeaningfulContent(content)){
-        show('内容不能为空','error');
-        editContent.focus();
+    if(!title&&!hasMeaningfulContent(content)){
+        show('标题和内容不能同时为空','error');
+        editTitle.focus();
         return;
     }
 
@@ -2019,7 +2019,7 @@ function fastScrollToTop(){
     const startY=window.scrollY;
     if(startY<=0)return;
 
-    const duration=50;
+    const duration=10;
     const startTime=performance.now();
 
     function step(now){
