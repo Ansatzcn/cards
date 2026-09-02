@@ -303,23 +303,22 @@ button{cursor:pointer}
 }
 
 .cards-list{
-    display:block;
-    overflow:hidden;
+    display:grid;
+    gap:.8rem;
+    overflow:visible;
     margin-top:.5rem;
-    border:1px solid #e9edf4;
-    border-radius:20px;
-    background:#fff;
+    border:0;
+    border-radius:0;
+    background:transparent;
 }
 .cards-item{
     padding:.9rem 1.2rem;
-    border:0;
-    border-bottom:1px solid #eef2f6;
-    border-radius:0;
+    border:1px solid #e9edf4;
+    border-radius:999px;
     background:#fff;
     transition:background .15s;
 }
 .cards-item::after{content:"";display:block;clear:both}
-.cards-item:last-child{border-bottom:0}
 .cards-item:hover{background:#fafcff}
 .cards-title{
     margin-bottom:.45rem;
@@ -339,20 +338,26 @@ button{cursor:pointer}
 }
 .cards-content a{color:#1E40AF;text-decoration:none}
 .cards-content a:hover,.cards-content a:focus-visible{color:#1E3A8A;text-decoration:underline;outline:none}
+.cards-source-divider{
+    margin:1em 0;
+    border:0;
+    border-top:1px solid #cbd5e1;
+}
 .cards-footer{
     display:flex;
     align-items:flex-end;
     justify-content:space-between;
     gap:12px;
     width:100%;
-    margin-top:.65rem;
+    margin-top:0;
 }
 .cards-source{
     min-width:0;
     flex:1 1 auto;
     color:#64748b;
-    font-size:.95rem;
-    line-height:1.45;
+    font-size:1rem;
+    font-weight:400;
+    line-height:1.68;
     overflow-wrap:anywhere;
 }
 .item-actions{
@@ -622,6 +627,7 @@ button{cursor:pointer}
     .cards-item{padding:.75rem .8rem}
     .cards-title{font-size:1.02rem}
     .cards-content{font-size:.95rem}
+    .cards-source{font-size:.95rem}
     .dialog{width:100%;border-radius:20px}
     .dialog-scroll{padding:1.2rem 1.2rem .8rem}
     .dialog-actions{padding:.85rem 1.2rem max(.85rem,env(safe-area-inset-bottom))}
@@ -1378,6 +1384,7 @@ function render(){
             ${item.title?`<h3 class="cards-title">${esc(item.title)}</h3>`:''}
             <div class="cards-content">${renderMarkdownLinks(item.content)}</div>
             ${item.source?`
+            <hr class="cards-source-divider">
             <div class="cards-footer">
                 <div class="cards-source">${esc(item.source)}</div>
             </div>`:''}
