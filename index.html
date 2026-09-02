@@ -303,7 +303,8 @@ button{cursor:pointer}
 }
 
 .cards-list{
-    display:grid;
+    display:flex;
+    flex-direction:column;
     gap:1.25rem;
     overflow:visible;
     margin-top:.5rem;
@@ -312,13 +313,18 @@ button{cursor:pointer}
     background:transparent;
 }
 .cards-item{
+    width:100%;
+    min-width:0;
     padding:1.35rem 1.4rem 1.5rem;
     border:1px solid #e2e8f0;
     border-radius:20px;
     background:#fff;
+    overflow:visible;
     transition:background .15s;
 }
 .cards-item::after{content:"";display:block;clear:both}
+.cards-item > *{max-width:100%}
+.cards-title,.cards-content,.cards-source{min-width:0;overflow-wrap:anywhere;word-break:break-word}
 .cards-item:hover{background:#fafcff}
 .cards-title{
     margin-bottom:.45rem;
