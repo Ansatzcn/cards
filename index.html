@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="app-build" content="2026-09-10-cards-code-assets-table-v1">
+<meta name="app-build" content="2026-09-11-cards-mathjax-v1">
 <meta name="cards-data-file" content="cards_data.json">
 <title>Cards</title>
 <style>
@@ -344,6 +344,18 @@ button{cursor:pointer}
 }
 .cards-content a{color:#1E40AF;text-decoration:none}
 .cards-content a:hover,.cards-content a:focus-visible{color:#1E3A8A;text-decoration:underline;outline:none}
+
+/* 数学公式：MathJax SVG 输出在卡片内自适应；长公式允许横向滚动，避免撑破卡片。 */
+.cards-content mjx-container[jax="SVG"]{
+    max-width:100%;
+    overflow-x:auto;
+    overflow-y:hidden;
+    vertical-align:middle;
+}
+.cards-content mjx-container[display="true"]{
+    margin:.8em 0!important;
+    text-align:center;
+}
 .rich-editor img,.cards-content img{
     display:block;
     max-width:100%;
@@ -745,6 +757,8 @@ button{cursor:pointer}
                         <button class="editor-btn" type="button" data-command="insertUnorderedList" title="无序列表">• 列表</button>
                         <button class="editor-btn" type="button" data-command="insertOrderedList" title="有序列表">1. 列表</button>
                         <button class="editor-btn" type="button" data-action="quote" title="引用">引用</button>
+                        <button class="editor-btn" type="button" data-action="inlineMath" title="将选中文字设为行内公式；无选区时插入公式模板">公式</button>
+                        <button class="editor-btn" type="button" data-action="displayMath" title="将选中文字设为独立公式；无选区时插入公式模板">公式块</button>
                         <button class="editor-btn" type="button" data-action="image" title="上传图片">图片</button>
                         <button class="editor-btn" type="button" data-action="table" title="插入表格">表格</button>
                         <button class="editor-btn" type="button" data-action="hr" title="横线分隔线">分隔线</button>
@@ -799,6 +813,8 @@ button{cursor:pointer}
                         <button class="editor-btn" type="button" data-command="insertUnorderedList" title="无序列表">• 列表</button>
                         <button class="editor-btn" type="button" data-command="insertOrderedList" title="有序列表">1. 列表</button>
                         <button class="editor-btn" type="button" data-action="quote" title="引用">引用</button>
+                        <button class="editor-btn" type="button" data-action="inlineMath" title="将选中文字设为行内公式；无选区时插入公式模板">公式</button>
+                        <button class="editor-btn" type="button" data-action="displayMath" title="将选中文字设为独立公式；无选区时插入公式模板">公式块</button>
                         <button class="editor-btn" type="button" data-action="image" title="上传图片">图片</button>
                         <button class="editor-btn" type="button" data-action="table" title="插入表格">表格</button>
                         <button class="editor-btn" type="button" data-action="hr" title="横线分隔线">分隔线</button>
@@ -1068,6 +1084,81 @@ function clipboardHtmlToMarkdownText(html,fallback=''){
     const result=read(template.content).replace(/\r\n?/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
     return result||String(fallback||'');
 }
+// 数学输入保护：如果纯文本剪贴板含有 TeX/LaTeX 公式，必须优先采用纯文本原文。
+// 这样不会因为剪贴板同时携带 HTML 版本而丢失 $ 定界符或反斜杠命令。
+function looksLikeMathPlainText(value){
+    const text=String(value??'');
+    if(!text)return false;
+    return /\$\$[\s\S]+?\$\$/.test(text)
+        || /(^|[^\\])\$(?!\$)[^\r\n$]+?(?<!\\)\$(?!\$)/m.test(text)
+        || /\\\([\s\S]+?\\\)/.test(text)
+        || /\\\[[\s\S]+?\\\]/.test(text)
+        || /\\(?:sqrt|frac|dfrac|tfrac|sum|prod|int|lim|log|ln|sin|cos|tan|alpha|beta|gamma|theta|pi|infty|mathbf|mathrm|text|begin|left|right)\b/.test(text);
+}
+function clipboardTextForEditor(plain,html){
+    const rawPlain=String(plain??'');
+    if(looksLikeMathPlainText(rawPlain))return rawPlain.replace(/\r\n?/g,'\n');
+    return html?clipboardHtmlToMarkdownText(html,rawPlain):rawPlain;
+}
+
+// 动态加载 MathJax 4。只渲染总表正文，不处理 contenteditable，避免公式预览反向污染可编辑的原始 TeX。
+const MATHJAX_SOURCES=[
+    'https://cdn.jsdelivr.net/npm/mathjax@4.1.3/tex-svg.js',
+    'https://unpkg.com/mathjax@4.1.3/tex-svg.js'
+];
+let mathJaxLoadPromise=null;
+let mathRenderVersion=0;
+function ensureMathJax(){
+    if(window.MathJax&&typeof window.MathJax.typesetPromise==='function')return Promise.resolve(window.MathJax);
+    if(mathJaxLoadPromise)return mathJaxLoadPromise;
+
+    const existing=(window.MathJax&&typeof window.MathJax==='object')?window.MathJax:{};
+    window.MathJax={
+        ...existing,
+        tex:{
+            ...(existing.tex||{}),
+            inlineMath:{'[+]':[['$','$']]},
+            processEscapes:true
+        },
+        svg:{...(existing.svg||{}),fontCache:'global'},
+        startup:{...(existing.startup||{}),typeset:false}
+    };
+
+    mathJaxLoadPromise=new Promise((resolve,reject)=>{
+        let index=0;
+        const tryNext=()=>{
+            if(index>=MATHJAX_SOURCES.length){
+                reject(new Error('数学公式渲染器加载失败'));
+                return;
+            }
+            const script=document.createElement('script');
+            script.src=MATHJAX_SOURCES[index++];
+            script.defer=true;
+            script.crossOrigin='anonymous';
+            script.onload=()=>{
+                if(window.MathJax&&typeof window.MathJax.typesetPromise==='function')resolve(window.MathJax);
+                else tryNext();
+            };
+            script.onerror=()=>{script.remove();tryNext();};
+            document.head.appendChild(script);
+        };
+        tryNext();
+    });
+    return mathJaxLoadPromise;
+}
+function clearTypesetMath(container){
+    if(window.MathJax&&typeof window.MathJax.typesetClear==='function'){
+        try{window.MathJax.typesetClear([container]);}catch(error){console.warn('清理公式渲染状态失败',error);}
+    }
+}
+function queueMathTypeset(container,version){
+    ensureMathJax().then(async mathJax=>{
+        if(version!==mathRenderVersion||!container.isConnected)return;
+        try{await mathJax.typesetPromise([container]);}
+        catch(error){console.error('数学公式渲染失败',error);}
+    }).catch(error=>console.error(error));
+}
+
 function plainTextToHtml(value){
     const text=String(value??'').replace(/\r\n?/g,'\n').trim();
     return text?esc(text).replace(/\n/g,'<br>'):'';
@@ -1499,6 +1590,8 @@ async function deleteAttachmentFolder(code){
 function render(){
     state=normalizeState(state);
     countDisplay.textContent=String(state.length);
+    clearTypesetMath(cardsList);
+    const currentMathVersion=++mathRenderVersion;
 
     if(!state.length){
         cardsList.innerHTML='<div class="empty-state">暂无 Cards</div>';
@@ -1521,6 +1614,7 @@ function render(){
     publicLoaded=true;
     exportBtn.disabled=false;
     saveCache();
+    queueMathTypeset(cardsList,currentMathVersion);
 }
 
 // ---------- 编辑登录 / 解锁写权限 ----------
@@ -1811,6 +1905,15 @@ async function resolvePendingImages(editor,code){
     }
     return getEditorHtml(editor);
 }
+function insertMathTemplate(editor,display=false){
+    ensureEditorSelection(editor);
+    const sel=window.getSelection();
+    const selected=sel&&sel.rangeCount>0&&editor.contains(sel.anchorNode)?sel.toString():'';
+    const body=selected||'x';
+    const text=display?`$$${body}$$`:`$${body}$`;
+    document.execCommand('insertText',false,text);
+    editor.dispatchEvent(new Event('input',{bubbles:true}));
+}
 function runEditorAction(editor,button){
     ensureEditorSelection(editor);
     const command=button.dataset.command;
@@ -1818,7 +1921,13 @@ function runEditorAction(editor,button){
     if(command)document.execCommand(command,false,null);
     else if(action==='indent')toggleFirstLineIndent(editor);
     else if(action==='quote')toggleQuote(editor);
-    else if(action==='image'){
+    else if(action==='inlineMath'){
+        insertMathTemplate(editor,false);
+        return;
+    }else if(action==='displayMath'){
+        insertMathTemplate(editor,true);
+        return;
+    }else if(action==='image'){
         rememberEditorRange(editor);
         editorImageInput(editor).click();
         return;
@@ -1941,7 +2050,7 @@ function setupRichEditor(editor,toolbar,imageInput){
         event.preventDefault();
         const plain=event.clipboardData?.getData('text/plain')||'';
         const html=event.clipboardData?.getData('text/html')||'';
-        const text=html?clipboardHtmlToMarkdownText(html,plain):plain;
+        const text=clipboardTextForEditor(plain,html);
         document.execCommand('insertText',false,text);
     });
 }
