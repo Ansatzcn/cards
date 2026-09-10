@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="app-build" content="2026-08-25-cards-ae0b2a-sync-title-v1">
+<meta name="app-build" content="2026-09-10-cards-code-assets-table-v1">
 <meta name="cards-data-file" content="cards_data.json">
 <title>Cards</title>
 <style>
@@ -344,34 +344,50 @@ button{cursor:pointer}
 }
 .cards-content a{color:#1E40AF;text-decoration:none}
 .cards-content a:hover,.cards-content a:focus-visible{color:#1E3A8A;text-decoration:underline;outline:none}
-.cards-source-divider{
-    margin:1em 0;
-    border:0;
-    border-top:1px solid #cbd5e1;
+.rich-editor img,.cards-content img{
+    display:block;
+    max-width:100%;
+    height:auto;
+    margin:.75em auto;
+    border-radius:10px;
 }
+.rich-editor table,.cards-content table{
+    width:100%;
+    margin:.8em 0;
+    border-collapse:collapse;
+    table-layout:auto;
+}
+.rich-editor th,.rich-editor td,.cards-content th,.cards-content td{
+    min-width:3em;
+    padding:.38em .55em;
+    border:1px solid #cbd5e1;
+    vertical-align:top;
+}
+.rich-editor th,.cards-content th{background:#f8fafc;font-weight:700}
 .cards-footer{
     display:flex;
     align-items:flex-end;
     justify-content:space-between;
     gap:12px;
     width:100%;
-    margin-top:0;
+    margin-top:.65rem;
 }
 .cards-source{
     min-width:0;
     flex:1 1 auto;
-    color:#0f172a;
-    font-size:1rem;
+    color:#64748b;
+    font-size:.86rem;
     font-weight:400;
-    line-height:1.68;
+    line-height:1.5;
     overflow-wrap:anywhere;
 }
 .item-actions{
-    float:right;
+    flex:0 0 auto;
     display:flex;
+    align-items:flex-end;
     justify-content:flex-end;
     gap:6px;
-    margin:.08rem 0 .3rem 12px;
+    margin-left:auto;
 }
 .action-btn{
     padding:.28rem .72rem;
@@ -633,7 +649,7 @@ button{cursor:pointer}
     .cards-item{padding:1.05rem 1rem 1.2rem}
     .cards-title{font-size:1.02rem}
     .cards-content{font-size:.95rem}
-    .cards-source{font-size:.95rem}
+    .cards-source{font-size:.82rem}
     .dialog{width:100%;border-radius:20px}
     .dialog-scroll{padding:1.2rem 1.2rem .8rem}
     .dialog-actions{padding:.85rem 1.2rem max(.85rem,env(safe-area-inset-bottom))}
@@ -717,10 +733,6 @@ button{cursor:pointer}
                 <input class="title-input" id="titleInput" type="text" autocomplete="off">
             </div>
             <div class="form-group" style="margin-bottom:.9rem">
-                <label for="sourceInput">出处</label>
-                <input class="title-input" id="sourceInput" type="text" autocomplete="off">
-            </div>
-            <div class="form-group">
                 <label for="contentInput">内容</label>
                 <div class="rich-editor-wrap">
                     <div class="rich-editor" id="contentInput" contenteditable="true" role="textbox" aria-multiline="true"></div>
@@ -733,12 +745,19 @@ button{cursor:pointer}
                         <button class="editor-btn" type="button" data-command="insertUnorderedList" title="无序列表">• 列表</button>
                         <button class="editor-btn" type="button" data-command="insertOrderedList" title="有序列表">1. 列表</button>
                         <button class="editor-btn" type="button" data-action="quote" title="引用">引用</button>
+                        <button class="editor-btn" type="button" data-action="image" title="上传图片">图片</button>
+                        <button class="editor-btn" type="button" data-action="table" title="插入表格">表格</button>
                         <button class="editor-btn" type="button" data-action="hr" title="横线分隔线">分隔线</button>
                         <button class="editor-btn" type="button" data-command="undo" title="撤销">撤销</button>
                         <button class="editor-btn" type="button" data-command="redo" title="重做">重做</button>
                         <button class="editor-btn" type="button" data-command="removeFormat" title="清除格式">清除格式</button>
                     </div>
+                    <input id="contentImageInput" type="file" accept="image/*" multiple hidden>
                 </div>
+            </div>
+            <div class="form-group">
+                <label for="sourceInput">出处</label>
+                <input class="title-input" id="sourceInput" type="text" autocomplete="off">
             </div>
             <button class="add-button" id="addBtn" type="button">提交</button>
         </section>
@@ -780,11 +799,14 @@ button{cursor:pointer}
                         <button class="editor-btn" type="button" data-command="insertUnorderedList" title="无序列表">• 列表</button>
                         <button class="editor-btn" type="button" data-command="insertOrderedList" title="有序列表">1. 列表</button>
                         <button class="editor-btn" type="button" data-action="quote" title="引用">引用</button>
+                        <button class="editor-btn" type="button" data-action="image" title="上传图片">图片</button>
+                        <button class="editor-btn" type="button" data-action="table" title="插入表格">表格</button>
                         <button class="editor-btn" type="button" data-action="hr" title="横线分隔线">分隔线</button>
                         <button class="editor-btn" type="button" data-command="undo" title="撤销">撤销</button>
                         <button class="editor-btn" type="button" data-command="redo" title="重做">重做</button>
                         <button class="editor-btn" type="button" data-command="removeFormat" title="清除格式">清除格式</button>
                     </div>
+                    <input id="editImageInput" type="file" accept="image/*" multiple hidden>
                 </div>
             </div>
         </div>
@@ -860,6 +882,7 @@ const CACHE_KEY=`${NS}:cache`;
 const META_KEY=`${NS}:meta`;
 
 const MAX_BYTES=750*1024;
+const CODE_MIN=480001,CODE_MAX=489999;
 const AUTO_DELAY=700;
 const API_VERSION='2026-03-10';
 const PUBLIC_DATA_FILE=cleanPublicDataFile(
@@ -875,8 +898,8 @@ const $=id=>document.getElementById(id);
 const statusDot=$('statusDot'),statusText=$('statusText'),syncBtn=$('syncBtn'),configBtn=$('configBtn'),
 exportBtn=$('exportBtn'),importBtn=$('importBtn'),fileInput=$('fileInput'),lastSyncTime=$('lastSyncTime'),
 lockedPanel=$('lockedPanel'),lockedConfigBtn=$('lockedConfigBtn'),appContent=$('appContent'),editorSection=$('editorSection'),
-titleInput=$('titleInput'),sourceInput=$('sourceInput'),contentInput=$('contentInput'),contentToolbar=$('contentToolbar'),addBtn=$('addBtn'),countDisplay=$('countDisplay'),cardsList=$('cardsList'),
-editModal=$('editModal'),editTitle=$('editTitle'),editSource=$('editSource'),editContent=$('editContent'),editToolbar=$('editToolbar'),editDelete=$('editDelete'),editCancel=$('editCancel'),editSave=$('editSave'),
+titleInput=$('titleInput'),sourceInput=$('sourceInput'),contentInput=$('contentInput'),contentToolbar=$('contentToolbar'),contentImageInput=$('contentImageInput'),addBtn=$('addBtn'),countDisplay=$('countDisplay'),cardsList=$('cardsList'),
+editModal=$('editModal'),editTitle=$('editTitle'),editSource=$('editSource'),editContent=$('editContent'),editToolbar=$('editToolbar'),editImageInput=$('editImageInput'),editDelete=$('editDelete'),editCancel=$('editCancel'),editSave=$('editSave'),
 configModal=$('configModal'),configForm=$('configForm'),cfgOwner=$('cfgOwner'),cfgRepo=$('cfgRepo'),
 cfgFile=$('cfgFile'),cfgToken=$('cfgToken'),rememberToken=$('rememberToken'),configCancel=$('configCancel'),
 configSave=$('configSave'),backToTopBtn=$('backToTopBtn'),toast=$('toast');
@@ -891,6 +914,8 @@ let autoTimer=null;
 let editingId='';
 let editInitialSnapshot='';
 let toastTimer=null;
+const pendingUploads=new WeakMap();
+const savedEditorRanges=new WeakMap();
 
 // ---------- 移动端可见视口 ----------
 function updateVisibleViewportHeight(){
@@ -917,10 +942,23 @@ function validIso(v){
     const s=clean(v);
     return s&&!Number.isNaN(Date.parse(s))?new Date(s).toISOString():'';
 }
-const ALLOWED_TAGS=new Set(['B','STRONG','I','EM','U','S','STRIKE','P','DIV','BR','HR','UL','OL','LI','BLOCKQUOTE']);
+const ALLOWED_TAGS=new Set(['B','STRONG','I','EM','U','S','STRIKE','P','DIV','BR','HR','UL','OL','LI','BLOCKQUOTE','IMG','TABLE','THEAD','TBODY','TFOOT','TR','TH','TD','CAPTION']);
 function normalizeHttpUrl(value){
     const url=String(value??'').trim();
     return /^https?:\/\/[^\s<>()]+$/i.test(url)?url:'';
+}
+function normalizeImageSrc(value){
+    const src=String(value??'').trim();
+    if(!src||/[<>"']/u.test(src))return '';
+    if(/^(?:javascript|data|file):/i.test(src))return '';
+    if(/^\/\//.test(src))return '';
+    if(/^blob:/i.test(src)||/^https?:\/\//i.test(src))return src;
+    if(/^[a-z][a-z0-9+.-]*:/i.test(src))return '';
+    return src;
+}
+function normalizeEntryCode(value){
+    const code=Number.parseInt(String(value??''),10);
+    return Number.isInteger(code)&&code>=CODE_MIN&&code<=CODE_MAX?code:null;
 }
 function anchorToMarkdownText(anchor){
     const label=(anchor.textContent||'').replace(/\u00a0/g,' ').trim();
@@ -961,8 +999,19 @@ function sanitizeHtml(value){
             }
 
             const keepIndent=(tag==='P'||tag==='DIV')&&child.classList.contains('first-line-indent');
+            const imageSrc=tag==='IMG'?normalizeImageSrc(child.getAttribute('src')):'';
+            const imageAlt=tag==='IMG'?String(child.getAttribute('alt')||'').slice(0,300):'';
+            const uploadToken=tag==='IMG'&&/^img_[a-z0-9_-]+$/i.test(child.getAttribute('data-upload-token')||'')
+                ? child.getAttribute('data-upload-token')
+                : '';
             for(const attribute of [...child.attributes])child.removeAttribute(attribute.name);
             if(keepIndent)child.className='first-line-indent';
+            if(tag==='IMG'){
+                if(!imageSrc){child.remove();continue;}
+                child.setAttribute('src',imageSrc);
+                if(imageAlt)child.setAttribute('alt',imageAlt);
+                if(uploadToken)child.setAttribute('data-upload-token',uploadToken);
+            }
         }
     };
 
@@ -1029,7 +1078,11 @@ function htmlToText(value){
     return (div.textContent||'').replace(/\u00a0/g,' ').trim();
 }
 function hasMeaningfulContent(value){
-    return Boolean(htmlToText(value));
+    const html=sanitizeHtml(value);
+    if(htmlToText(html))return true;
+    const div=document.createElement('div');
+    div.innerHTML=html;
+    return Boolean(div.querySelector('img,table'));
 }
 function getEditorHtml(editor){
     return sanitizeHtml(editor.innerHTML);
@@ -1047,6 +1100,7 @@ function normalizeEntry(x){
     if((!title&&!hasMeaningfulContent(content))||!createdAt)return null;
     return{
         id:clean(x.id)||uid(),
+        code:normalizeEntryCode(x.code),
         title,
         source,
         content,
@@ -1112,10 +1166,27 @@ function compareCardsByTitle(a,b){
 
 function normalizeState(value){
     const source=Array.isArray(value)?value:(value&&Array.isArray(value.entries)?value.entries:[]);
-    return source
-        .map(normalizeEntry)
-        .filter(Boolean)
-        .sort(compareCardsByTitle);
+    const entries=source.map(normalizeEntry).filter(Boolean).sort(compareCardsByTitle);
+    const used=new Set();
+    for(const item of entries){
+        const code=normalizeEntryCode(item.code);
+        if(code!==null&&!used.has(code)){item.code=code;used.add(code);}else{item.code=null;}
+    }
+    let cursor=CODE_MIN;
+    for(const item of entries){
+        if(item.code!==null)continue;
+        while(cursor<=CODE_MAX&&used.has(cursor))cursor++;
+        if(cursor>CODE_MAX)throw new Error('Cards 编码区间已用完');
+        item.code=cursor;
+        used.add(cursor);
+        cursor++;
+    }
+    return entries;
+}
+function allocateEntryCode(){
+    const used=new Set(state.map(item=>normalizeEntryCode(item.code)).filter(code=>code!==null));
+    for(let code=CODE_MIN;code<=CODE_MAX;code++)if(!used.has(code))return code;
+    throw new Error('Cards 编码区间已用完');
 }
 function fingerprint(value=state){
     return JSON.stringify(normalizeState(value));
@@ -1357,7 +1428,7 @@ async function readRemote(){
 }
 async function writeRemote(snapshot,sha){
     const normalized=normalizeState(snapshot);
-    const raw=JSON.stringify({schemaVersion:2,entries:normalized},null,2);
+    const raw=JSON.stringify({schemaVersion:3,entries:normalized},null,2);
     if(new TextEncoder().encode(raw).length>MAX_BYTES){
         throw new Error('数据超过 750 KB');
     }
@@ -1368,6 +1439,60 @@ async function writeRemote(snapshot,sha){
     if(sha)body.sha=sha;
     const result=await githubApi('PUT',`contents/${pathEncode(config.file)}`,body);
     return result?.content?.sha||null;
+}
+
+// ---------- 附件 ----------
+function attachmentBaseDir(){
+    const file=clean(config.file)||PUBLIC_DATA_FILE;
+    const normalized=file.replace(/\\/g,'/').replace(/^\/+|\/+$/g,'');
+    const slash=normalized.lastIndexOf('/');
+    return slash>=0?normalized.slice(0,slash):'';
+}
+function safeAttachmentName(name){
+    const raw=String(name||'image').normalize('NFKC').replace(/[\/\\:*?"<>|\u0000-\u001f]/g,'_').trim();
+    const safe=raw.replace(/^\.+/,'').slice(-120)||'image';
+    return `${Date.now()}_${Math.random().toString(36).slice(2,8)}_${safe}`;
+}
+function attachmentRepoPath(code,name){return [attachmentBaseDir(),String(code),name].filter(Boolean).join('/');}
+function attachmentPublicSrc(repoPath){return './'+String(repoPath).split('/').filter(Boolean).map(encodeURIComponent).join('/');}
+function fileToBase64(file){
+    return new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onerror=()=>reject(reader.error||new Error('读取图片失败'));
+        reader.onload=()=>{
+            const value=String(reader.result||'');
+            const comma=value.indexOf(',');
+            if(comma<0)return reject(new Error('图片编码失败'));
+            resolve(value.slice(comma+1));
+        };
+        reader.readAsDataURL(file);
+    });
+}
+async function uploadAttachment(code,file){
+    const name=safeAttachmentName(file.name);
+    const repoPath=attachmentRepoPath(code,name);
+    const result=await githubApi('PUT',`contents/${pathEncode(repoPath)}`,{
+        message:`上传 Cards ${code} 附件 ${name}`,
+        content:await fileToBase64(file)
+    });
+    if(!result?.content?.sha)throw new Error(`图片上传失败：${file.name}`);
+    return{repoPath,src:attachmentPublicSrc(repoPath)};
+}
+async function deleteRepoTree(repoPath){
+    let data;
+    try{data=await githubApi('GET',`contents/${pathEncode(repoPath)}`);}catch(error){if(error.status===404)return;throw error;}
+    const items=Array.isArray(data)?data:[data];
+    for(const item of items){
+        if(item?.type==='dir')await deleteRepoTree(item.path);
+        else if(item?.type==='file'&&item.sha&&item.path){
+            await githubApi('DELETE',`contents/${pathEncode(item.path)}`,{message:`删除 Cards 附件 ${item.path}`,sha:item.sha});
+        }
+    }
+}
+async function deleteAttachmentFolder(code){
+    const valid=normalizeEntryCode(code);
+    if(valid===null)return;
+    await deleteRepoTree([attachmentBaseDir(),String(valid)].filter(Boolean).join('/'));
 }
 
 // ---------- 渲染 ----------
@@ -1382,17 +1507,13 @@ function render(){
     }
 
     cardsList.innerHTML=state.map(item=>`
-        <article class="cards-item">
-            ${unlocked?`
-            <div class="item-actions">
-                <button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">编辑</button>
-            </div>`:''}
+        <article class="cards-item" data-code="${item.code}">
             ${item.title?`<h3 class="cards-title">${esc(item.title)}</h3>`:''}
             <div class="cards-content">${renderMarkdownLinks(item.content)}</div>
-            ${item.source?`
-            <hr class="cards-source-divider">
+            ${(item.source||unlocked)?`
             <div class="cards-footer">
-                <div class="cards-source">${esc(item.source)}</div>
+                <div class="cards-source">${item.source?esc(item.source):''}</div>
+                ${unlocked?`<div class="item-actions"><button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">编辑</button></div>`:''}
             </div>`:''}
         </article>
     `).join('');
@@ -1638,19 +1759,73 @@ function toggleQuote(editor){
     const block=currentBlock(editor);
     document.execCommand('formatBlock',false,block?.tagName==='BLOCKQUOTE'?'p':'blockquote');
 }
+function editorImageInput(editor){return editor===editContent?editImageInput:contentImageInput;}
+function rememberEditorRange(editor){
+    const sel=window.getSelection();
+    if(sel&&sel.rangeCount>0&&editor.contains(sel.anchorNode))savedEditorRanges.set(editor,sel.getRangeAt(0).cloneRange());
+}
+function restoreEditorRange(editor){
+    editor.focus();
+    const range=savedEditorRanges.get(editor);
+    if(!range)return ensureEditorSelection(editor);
+    const sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);
+}
+function pendingMap(editor){let map=pendingUploads.get(editor);if(!map){map=new Map();pendingUploads.set(editor,map);}return map;}
+function clearPendingUploads(editor){
+    const map=pendingMap(editor);
+    for(const value of map.values())try{URL.revokeObjectURL(value.previewUrl)}catch(e){}
+    map.clear();savedEditorRanges.delete(editor);
+}
+function insertPendingImages(editor,files){
+    const images=[...files].filter(file=>String(file.type||'').startsWith('image/'));
+    if(!images.length)return;
+    restoreEditorRange(editor);
+    const sel=window.getSelection();const range=sel&&sel.rangeCount?sel.getRangeAt(0):null;if(!range)return;
+    const fragment=document.createDocumentFragment();const map=pendingMap(editor);
+    for(const file of images){
+        const token=`img_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,9)}`;
+        const previewUrl=URL.createObjectURL(file);map.set(token,{file,previewUrl});
+        const img=document.createElement('img');img.setAttribute('src',previewUrl);img.setAttribute('alt',file.name||'图片');img.setAttribute('data-upload-token',token);
+        fragment.appendChild(img);fragment.appendChild(document.createElement('br'));
+    }
+    range.deleteContents();range.insertNode(fragment);ensureEditorSelection(editor);editor.dispatchEvent(new Event('input',{bubbles:true}));
+}
+function insertTable(editor){
+    rememberEditorRange(editor);
+    const rowsRaw=prompt('表格行数（1–20）','3');if(rowsRaw===null)return;
+    const colsRaw=prompt('表格列数（1–12）','3');if(colsRaw===null)return;
+    const rows=Number.parseInt(rowsRaw,10),cols=Number.parseInt(colsRaw,10);
+    if(!Number.isInteger(rows)||rows<1||rows>20||!Number.isInteger(cols)||cols<1||cols>12){show('请输入有效的表格行列数','error');return;}
+    restoreEditorRange(editor);
+    let html='<table><tbody>';
+    for(let r=0;r<rows;r++){html+='<tr>';for(let c=0;c<cols;c++)html+=r===0?'<th>&nbsp;</th>':'<td>&nbsp;</td>';html+='</tr>';}
+    html+='</tbody></table><p><br></p>';document.execCommand('insertHTML',false,html);editor.dispatchEvent(new Event('input',{bubbles:true}));
+}
+async function resolvePendingImages(editor,code){
+    const map=pendingMap(editor);const nodes=[...editor.querySelectorAll('img[data-upload-token]')];
+    for(const img of nodes){
+        const token=img.getAttribute('data-upload-token');const pending=map.get(token);
+        if(!pending)throw new Error('有图片尚未准备完成，请重新选择该图片');
+        const uploaded=await uploadAttachment(code,pending.file);img.setAttribute('src',uploaded.src);img.removeAttribute('data-upload-token');
+        try{URL.revokeObjectURL(pending.previewUrl)}catch(e){}map.delete(token);
+    }
+    return getEditorHtml(editor);
+}
 function runEditorAction(editor,button){
     ensureEditorSelection(editor);
     const command=button.dataset.command;
     const action=button.dataset.action;
-    if(command){
-        document.execCommand(command,false,null);
-    }else if(action==='indent'){
-        toggleFirstLineIndent(editor);
-    }else if(action==='quote'){
-        toggleQuote(editor);
-    }else if(action==='hr'){
-        document.execCommand('insertHorizontalRule',false,null);
-    }
+    if(command)document.execCommand(command,false,null);
+    else if(action==='indent')toggleFirstLineIndent(editor);
+    else if(action==='quote')toggleQuote(editor);
+    else if(action==='image'){
+        rememberEditorRange(editor);
+        editorImageInput(editor).click();
+        return;
+    }else if(action==='table'){
+        insertTable(editor);
+        return;
+    }else if(action==='hr')document.execCommand('insertHorizontalRule',false,null);
     editor.focus();
 }
 function setupEditorScrollIndicator(editor){
@@ -1757,19 +1932,12 @@ function setupEditorScrollIndicator(editor){
     scheduleUpdate();
 }
 
-function setupRichEditor(editor,toolbar){
+function setupRichEditor(editor,toolbar,imageInput){
     setupEditorScrollIndicator(editor);
-    toolbar.addEventListener('mousedown',event=>{
-        const button=event.target.closest('.editor-btn');
-        if(button)event.preventDefault();
-    });
-    toolbar.addEventListener('click',event=>{
-        const button=event.target.closest('.editor-btn');
-        if(!button)return;
-        runEditorAction(editor,button);
-    });
+    toolbar.addEventListener('mousedown',event=>{const button=event.target.closest('.editor-btn');if(button)event.preventDefault();});
+    toolbar.addEventListener('click',event=>{const button=event.target.closest('.editor-btn');if(!button)return;runEditorAction(editor,button);});
+    imageInput.addEventListener('change',()=>{insertPendingImages(editor,imageInput.files||[]);imageInput.value='';});
     editor.addEventListener('paste',event=>{
-        // 粘贴时仍只插入文本；若剪贴板里实际是 <a>，先还原为 [文字](链接)。
         event.preventDefault();
         const plain=event.clipboardData?.getData('text/plain')||'';
         const html=event.clipboardData?.getData('text/html')||'';
@@ -1777,36 +1945,25 @@ function setupRichEditor(editor,toolbar){
         document.execCommand('insertText',false,text);
     });
 }
-setupRichEditor(contentInput,contentToolbar);
-setupRichEditor(editContent,editToolbar);
+setupRichEditor(contentInput,contentToolbar,contentImageInput);
+setupRichEditor(editContent,editToolbar,editImageInput);
 
 // ---------- Cards 增删改 ----------
-function addEntry(){
-    if(!unlocked)return;
+async function addEntry(){
+    if(!unlocked||addBtn.disabled)return;
     const title=String(titleInput.value??'').trim();
     const source=String(sourceInput.value??'').trim();
-    const content=getEditorHtml(contentInput);
-    if(!title&&!hasMeaningfulContent(content)){
-        show('请输入标题或内容','error');
-        titleInput.focus();
-        return;
-    }
-
-    state.push({
-        id:uid(),
-        title,
-        source,
-        content,
-        contentFormat:'html',
-        createdAt:new Date().toISOString()
-    });
-
-    titleInput.value='';
-    sourceInput.value='';
-    contentInput.innerHTML='';
-    markLocalChange();
-    titleInput.focus();
-    show('已提交','success');
+    const initialContent=getEditorHtml(contentInput);
+    if(!title&&!hasMeaningfulContent(initialContent)){show('请输入标题或内容','error');titleInput.focus();return;}
+    let code;try{code=allocateEntryCode();}catch(error){show(error.message||String(error),'error');return;}
+    addBtn.disabled=true;
+    try{
+        const content=await resolvePendingImages(contentInput,code);
+        state.push({id:uid(),code,title,source,content,contentFormat:'html',createdAt:new Date().toISOString()});
+        titleInput.value='';sourceInput.value='';contentInput.innerHTML='';clearPendingUploads(contentInput);
+        markLocalChange();titleInput.focus();show(`已提交 · 编码 ${code}`,'success');
+    }catch(error){console.error(error);show(`提交失败：${formatError(error)}`,'error');}
+    finally{addBtn.disabled=false;}
 }
 function editSnapshot(){
     return JSON.stringify({
@@ -1816,6 +1973,7 @@ function editSnapshot(){
     });
 }
 function closeEditModal(){
+    clearPendingUploads(editContent);
     editingId='';
     editInitialSnapshot='';
     editModal.classList.add('hidden');
@@ -1843,44 +2001,36 @@ function openEdit(id){
 
     setTimeout(()=>editTitle.focus(),30);
 }
-function saveEdit(){
-    if(!unlocked)return;
-    const item=state.find(x=>x.id===editingId);
-    if(!item)return;
-
-    const title=String(editTitle.value??'').trim();
-    const source=String(editSource.value??'').trim();
-    const content=getEditorHtml(editContent);
-    if(!title&&!hasMeaningfulContent(content)){
-        show('标题和内容不能同时为空','error');
-        editTitle.focus();
-        return;
-    }
-
-    // 编辑标题、出处和内容，但保留原始提交时间，因此总表排序位置不会因编辑而改变。
-    item.title=title;
-    item.source=source;
-    item.content=content;
-    item.contentFormat='html';
-    closeEditModal();
-    markLocalChange();
-    show('已保存','success');
+async function saveEdit(){
+    if(!unlocked||editSave.disabled)return;
+    const item=state.find(x=>x.id===editingId);if(!item)return;
+    const title=String(editTitle.value??'').trim(),source=String(editSource.value??'').trim();
+    const initialContent=getEditorHtml(editContent);
+    if(!title&&!hasMeaningfulContent(initialContent)){show('标题和内容不能同时为空','error');editTitle.focus();return;}
+    editSave.disabled=true;
+    try{
+        const content=await resolvePendingImages(editContent,item.code);
+        item.title=title;item.source=source;item.content=content;item.contentFormat='html';
+        closeEditModal();markLocalChange();show('已保存','success');
+    }catch(error){console.error(error);show(`保存失败：${formatError(error)}`,'error');}
+    finally{editSave.disabled=false;}
 }
-function deleteEntry(id){
+async function deleteEntry(id){
     if(!unlocked)return false;
-    const item=state.find(x=>x.id===id);
-    if(!item)return false;
-    if(!confirm('确定删除这条 Cards 吗？'))return false;
-    state=state.filter(x=>x.id!==id);
-    markLocalChange();
-    show('已删除','success');
-    return true;
+    const item=state.find(x=>x.id===id);if(!item)return false;
+    if(!confirm(`确定删除这条 Cards 吗？
+
+编码 ${item.code} 将被释放并优先复用；其附件文件夹也会删除。`))return false;
+    try{
+        await deleteAttachmentFolder(item.code);
+        state=state.filter(x=>x.id!==id);markLocalChange();show(`已删除 · 编码 ${item.code} 已释放`,'success');return true;
+    }catch(error){console.error(error);show(`删除失败：${formatError(error)}`,'error');return false;}
 }
 
 // ---------- 导入导出 ----------
 function downloadJson(){
     if(!unlocked)return;
-    const payload={schemaVersion:2,entries:normalizeState(state)};
+    const payload={schemaVersion:3,entries:normalizeState(state)};
     const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
@@ -1973,9 +2123,11 @@ cardsList.addEventListener('click',event=>{
     if(edit)return openEdit(edit.dataset.id);
 });
 
-editDelete.addEventListener('click',()=>{
-    if(!editingId)return;
-    if(deleteEntry(editingId))closeEditModal();
+editDelete.addEventListener('click',async()=>{
+    if(!editingId||editDelete.disabled)return;
+    editDelete.disabled=true;
+    try{if(await deleteEntry(editingId))closeEditModal();}
+    finally{editDelete.disabled=false;}
 });
 editCancel.addEventListener('click',closeEditModal);
 editSave.addEventListener('click',saveEdit);
