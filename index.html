@@ -146,6 +146,7 @@ button{cursor:pointer}
     outline-offset:1px;
     border-color:transparent;
 }
+.title-input[readonly]{background:#f8fafc;color:#64748b;}
 .rich-editor-wrap{
     position:relative;
     overflow:hidden;
@@ -324,7 +325,7 @@ button{cursor:pointer}
 }
 .cards-item::after{content:"";display:block;clear:both}
 .cards-item > *{max-width:100%}
-.cards-title,.cards-content,.cards-source{min-width:0;overflow-wrap:anywhere;word-break:break-word}
+.cards-title,.cards-content,.cards-code{min-width:0;overflow-wrap:anywhere;word-break:break-word}
 .cards-item:hover{background:#fafcff}
 .cards-title{
     margin-bottom:.45rem;
@@ -384,7 +385,7 @@ button{cursor:pointer}
     width:100%;
     margin-top:.65rem;
 }
-.cards-source{
+.cards-code{
     min-width:0;
     flex:1 1 auto;
     color:#64748b;
@@ -661,7 +662,7 @@ button{cursor:pointer}
     .cards-item{padding:1.05rem 1rem 1.2rem}
     .cards-title{font-size:1.02rem}
     .cards-content{font-size:.95rem}
-    .cards-source{font-size:.82rem}
+    .cards-code{font-size:.82rem}
     .dialog{width:100%;border-radius:20px}
     .dialog-scroll{padding:1.2rem 1.2rem .8rem}
     .dialog-actions{padding:.85rem 1.2rem max(.85rem,env(safe-area-inset-bottom))}
@@ -770,8 +771,8 @@ button{cursor:pointer}
                 </div>
             </div>
             <div class="form-group">
-                <label for="sourceInput">出处</label>
-                <input class="title-input" id="sourceInput" type="text" autocomplete="off">
+                <label for="codeInput">编码</label>
+                <input class="title-input" id="codeInput" type="text" inputmode="numeric" autocomplete="off" placeholder="留空自动生成">
             </div>
             <button class="add-button" id="addBtn" type="button">提交</button>
         </section>
@@ -797,8 +798,8 @@ button{cursor:pointer}
                 <input class="title-input" id="editTitle" type="text" autocomplete="off" placeholder="可留空">
             </div>
             <div class="form-group">
-                <label for="editSource">出处</label>
-                <input class="title-input" id="editSource" type="text" autocomplete="off">
+                <label for="editCode">编码</label>
+                <input class="title-input" id="editCode" type="text" inputmode="numeric" autocomplete="off" readonly>
             </div>
             <div class="form-group">
                 <label for="editContent">内容</label>
@@ -914,8 +915,8 @@ const $=id=>document.getElementById(id);
 const statusDot=$('statusDot'),statusText=$('statusText'),syncBtn=$('syncBtn'),configBtn=$('configBtn'),
 exportBtn=$('exportBtn'),importBtn=$('importBtn'),fileInput=$('fileInput'),lastSyncTime=$('lastSyncTime'),
 lockedPanel=$('lockedPanel'),lockedConfigBtn=$('lockedConfigBtn'),appContent=$('appContent'),editorSection=$('editorSection'),
-titleInput=$('titleInput'),sourceInput=$('sourceInput'),contentInput=$('contentInput'),contentToolbar=$('contentToolbar'),contentImageInput=$('contentImageInput'),addBtn=$('addBtn'),countDisplay=$('countDisplay'),cardsList=$('cardsList'),
-editModal=$('editModal'),editTitle=$('editTitle'),editSource=$('editSource'),editContent=$('editContent'),editToolbar=$('editToolbar'),editImageInput=$('editImageInput'),editDelete=$('editDelete'),editCancel=$('editCancel'),editSave=$('editSave'),
+titleInput=$('titleInput'),codeInput=$('codeInput'),contentInput=$('contentInput'),contentToolbar=$('contentToolbar'),contentImageInput=$('contentImageInput'),addBtn=$('addBtn'),countDisplay=$('countDisplay'),cardsList=$('cardsList'),
+editModal=$('editModal'),editTitle=$('editTitle'),editCode=$('editCode'),editContent=$('editContent'),editToolbar=$('editToolbar'),editImageInput=$('editImageInput'),editDelete=$('editDelete'),editCancel=$('editCancel'),editSave=$('editSave'),
 configModal=$('configModal'),configForm=$('configForm'),cfgOwner=$('cfgOwner'),cfgRepo=$('cfgRepo'),
 cfgFile=$('cfgFile'),cfgToken=$('cfgToken'),rememberToken=$('rememberToken'),configCancel=$('configCancel'),
 configSave=$('configSave'),backToTopBtn=$('backToTopBtn'),toast=$('toast');
@@ -929,6 +930,7 @@ let syncing=false;
 let autoTimer=null;
 let editingId='';
 let editInitialSnapshot='';
+let editOverlayPointer=null;
 let toastTimer=null;
 const pendingUploads=new WeakMap();
 const savedEditorRanges=new WeakMap();
@@ -1279,6 +1281,15 @@ function allocateEntryCode(){
     for(let code=CODE_MIN;code<=CODE_MAX;code++)if(!used.has(code))return code;
     throw new Error('Cards 编码区间已用完');
 }
+function resolveNewEntryCode(raw){
+    const text=String(raw??'').trim();
+    if(!text)return allocateEntryCode();
+    if(!/^\d{6}$/.test(text))throw new Error(`编码必须是 ${CODE_MIN}–${CODE_MAX} 范围内的六位数字`);
+    const code=normalizeEntryCode(text);
+    if(code===null)throw new Error(`编码必须在 ${CODE_MIN}–${CODE_MAX} 范围内`);
+    if(state.some(item=>normalizeEntryCode(item.code)===code))throw new Error(`编码 ${code} 已被使用`);
+    return code;
+}
 function fingerprint(value=state){
     return JSON.stringify(normalizeState(value));
 }
@@ -1603,11 +1614,10 @@ function render(){
         <article class="cards-item" data-code="${item.code}">
             ${item.title?`<h3 class="cards-title">${esc(item.title)}</h3>`:''}
             <div class="cards-content">${renderMarkdownLinks(item.content)}</div>
-            ${(item.source||unlocked)?`
             <div class="cards-footer">
-                <div class="cards-source">${item.source?esc(item.source):''}</div>
+                <div class="cards-code">编码：${esc(item.code)}</div>
                 ${unlocked?`<div class="item-actions"><button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">编辑</button></div>`:''}
-            </div>`:''}
+            </div>
         </article>
     `).join('');
 
@@ -2061,15 +2071,14 @@ setupRichEditor(editContent,editToolbar,editImageInput);
 async function addEntry(){
     if(!unlocked||addBtn.disabled)return;
     const title=String(titleInput.value??'').trim();
-    const source=String(sourceInput.value??'').trim();
     const initialContent=getEditorHtml(contentInput);
     if(!title&&!hasMeaningfulContent(initialContent)){show('请输入标题或内容','error');titleInput.focus();return;}
-    let code;try{code=allocateEntryCode();}catch(error){show(error.message||String(error),'error');return;}
+    let code;try{code=resolveNewEntryCode(codeInput.value);}catch(error){show(error.message||String(error),'error');codeInput.focus();return;}
     addBtn.disabled=true;
     try{
         const content=await resolvePendingImages(contentInput,code);
-        state.push({id:uid(),code,title,source,content,contentFormat:'html',createdAt:new Date().toISOString()});
-        titleInput.value='';sourceInput.value='';contentInput.innerHTML='';clearPendingUploads(contentInput);
+        state.push({id:uid(),code,title,source:'',content,contentFormat:'html',createdAt:new Date().toISOString()});
+        titleInput.value='';codeInput.value='';contentInput.innerHTML='';clearPendingUploads(contentInput);
         markLocalChange();titleInput.focus();show(`已提交 · 编码 ${code}`,'success');
     }catch(error){console.error(error);show(`提交失败：${formatError(error)}`,'error');}
     finally{addBtn.disabled=false;}
@@ -2077,7 +2086,7 @@ async function addEntry(){
 function editSnapshot(){
     return JSON.stringify({
         title:String(editTitle.value??''),
-        source:String(editSource.value??''),
+        code:String(editCode.value??''),
         content:getEditorHtml(editContent)
     });
 }
@@ -2085,6 +2094,7 @@ function closeEditModal(){
     clearPendingUploads(editContent);
     editingId='';
     editInitialSnapshot='';
+    editOverlayPointer=null;
     editModal.classList.add('hidden');
 }
 function openEdit(id){
@@ -2093,7 +2103,7 @@ function openEdit(id){
     if(!item)return;
     editingId=id;
     editTitle.value=item.title||'';
-    editSource.value=item.source||'';
+    editCode.value=String(item.code??'');
     setEditorHtml(editContent,item.content);
     editInitialSnapshot=editSnapshot();
     editModal.classList.remove('hidden');
@@ -2113,13 +2123,13 @@ function openEdit(id){
 async function saveEdit(){
     if(!unlocked||editSave.disabled)return;
     const item=state.find(x=>x.id===editingId);if(!item)return;
-    const title=String(editTitle.value??'').trim(),source=String(editSource.value??'').trim();
+    const title=String(editTitle.value??'').trim();
     const initialContent=getEditorHtml(editContent);
     if(!title&&!hasMeaningfulContent(initialContent)){show('标题和内容不能同时为空','error');editTitle.focus();return;}
     editSave.disabled=true;
     try{
         const content=await resolvePendingImages(editContent,item.code);
-        item.title=title;item.source=source;item.content=content;item.contentFormat='html';
+        item.title=title;item.content=content;item.contentFormat='html';
         closeEditModal();markLocalChange();show('已保存','success');
     }catch(error){console.error(error);show(`保存失败：${formatError(error)}`,'error');}
     finally{editSave.disabled=false;}
@@ -2214,7 +2224,7 @@ titleInput.addEventListener('keydown',event=>{
         addEntry();
     }
 });
-sourceInput.addEventListener('keydown',event=>{
+codeInput.addEventListener('keydown',event=>{
     if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){
         event.preventDefault();
         addEntry();
@@ -2241,19 +2251,23 @@ editDelete.addEventListener('click',async()=>{
 editCancel.addEventListener('click',closeEditModal);
 editSave.addEventListener('click',saveEdit);
 
-// 仅在编辑内容完全没有变化时，点击弹窗外的遮罩区域自动关闭。
-// 使用 target===currentTarget，避免点击弹窗内部控件时被误判为“点击外部”。
-editModal.addEventListener('click',event=>{
-    if(event.target!==editModal||!editingId)return;
-    if(editSnapshot()===editInitialSnapshot)closeEditModal();
+// 未修改内容时，单击编辑框外的遮罩即可关闭。
+// 关键保护：如果按下动作起始于编辑框内部，即使拖动/选择/滚动时指针误出框并在遮罩上松开，也绝不关闭。
+editModal.addEventListener('pointerdown',event=>{
+    if(!editingId)return;
+    editOverlayPointer={
+        pointerId:event.pointerId,
+        startedOutside:event.target===editModal
+    };
 });
+editModal.addEventListener('pointerup',event=>{
+    if(!editingId||!editOverlayPointer||event.pointerId!==editOverlayPointer.pointerId)return;
+    const shouldClose=editOverlayPointer.startedOutside&&event.target===editModal&&editSnapshot()===editInitialSnapshot;
+    editOverlayPointer=null;
+    if(shouldClose)closeEditModal();
+});
+editModal.addEventListener('pointercancel',()=>{editOverlayPointer=null;});
 editTitle.addEventListener('keydown',event=>{
-    if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){
-        event.preventDefault();
-        saveEdit();
-    }
-});
-editSource.addEventListener('keydown',event=>{
     if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){
         event.preventDefault();
         saveEdit();
