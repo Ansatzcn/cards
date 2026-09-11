@@ -1615,7 +1615,7 @@ function render(){
             ${item.title?`<h3 class="cards-title">${esc(item.title)}</h3>`:''}
             <div class="cards-content">${renderMarkdownLinks(item.content)}</div>
             <div class="cards-footer">
-                <div class="cards-code">编码：${esc(item.code)}</div>
+                <div class="cards-code">${esc(item.code)}</div>
                 ${unlocked?`<div class="item-actions"><button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">编辑</button></div>`:''}
             </div>
         </article>
