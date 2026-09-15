@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="app-build" content="2026-09-15-cards-indent-paragraphs-v5">
+<meta name="app-build" content="2026-09-15-cards-indent-paragraph-model-v6">
 <meta name="cards-data-file" content="cards_data.json">
 <title>Cards</title>
 <style>
@@ -1251,10 +1251,12 @@ function hasMeaningfulContent(value){
     return Boolean(div.querySelector('img,table'));
 }
 function getEditorHtml(editor){
+    normalizeEditorParagraphModelPreservingSelection(editor);
     return sanitizeHtml(editor.innerHTML);
 }
 function setEditorHtml(editor,value){
     editor.innerHTML=sanitizeHtml(value);
+    normalizeEditorParagraphModel(editor);
 }
 function normalizeAttachmentFolder(value){
     const raw=String(value??'').trim();
@@ -1970,148 +1972,229 @@ function restoreEditorRange(editor){
         ensureEditorSelection(editor);
     }
 }
-function closestIndentParagraph(editor,node){
+function createEditorParagraph(inheritIndent=false){
+    const block=document.createElement('div');
+    block.classList.add('editor-paragraph');
+    if(inheritIndent)block.classList.add('first-line-indent');
+    return block;
+}
+function tagNestedEditorParagraphs(container){
+    for(const block of container.querySelectorAll('p,div')){
+        // 只把最内层 P/DIV 视为一个自然段，避免把包裹多个段落的容器误当成单段。
+        if(block.querySelector(':scope > p,:scope > div'))continue;
+        block.classList.add('editor-paragraph');
+    }
+}
+function normalizeEditorParagraphModel(editor){
+    // contenteditable 的顶层 DOM 由浏览器决定：可能是裸文本、DIV、P、BR，
+    // 甚至会出现“DIV 内再嵌 DIV”的段落结构。首行缩进不能依赖这些偶然结构。
+    // 这里把普通正文统一成顶层 DIV.editor-paragraph；列表、引用、表格等结构块原样保留。
+    const source=[...editor.childNodes];
+    if(!source.length)return;
+
+    const output=document.createDocumentFragment();
+    let paragraph=null;
+    let paragraphInheritedIndent=false;
+
+    const ensureParagraph=(inheritIndent=false)=>{
+        if(!paragraph){
+            paragraph=createEditorParagraph(inheritIndent);
+            paragraphInheritedIndent=inheritIndent;
+        }else if(inheritIndent&&!paragraphInheritedIndent){
+            paragraph.classList.add('first-line-indent');
+            paragraphInheritedIndent=true;
+        }
+        return paragraph;
+    };
+    const flush=(forceBlank=false)=>{
+        if(!paragraph&&forceBlank)paragraph=createEditorParagraph(false);
+        if(!paragraph)return;
+        if(!paragraph.childNodes.length)paragraph.appendChild(document.createElement('br'));
+        output.appendChild(paragraph);
+        paragraph=null;
+        paragraphInheritedIndent=false;
+    };
+    const appendDirectText=(node,inheritIndent=false)=>{
+        const value=String(node.nodeValue??'').replace(/\r\n?/g,'\n');
+        if(!value.includes('\n')){
+            ensureParagraph(inheritIndent).appendChild(node);
+            return;
+        }
+        const parts=value.split('\n');
+        node.remove();
+        parts.forEach((part,index)=>{
+            if(part)ensureParagraph(inheritIndent).appendChild(document.createTextNode(part));
+            // 文本节点中的换行在 contenteditable 中同样可能代表自然段边界。
+            if(index<parts.length-1)flush(true);
+        });
+    };
+
+    const processNodes=(nodes,inheritIndent=false)=>{
+        for(const node of nodes){
+            if(node.nodeType===Node.TEXT_NODE){
+                appendDirectText(node,inheritIndent);
+                continue;
+            }
+            if(node.nodeType!==Node.ELEMENT_NODE){
+                node.remove();
+                continue;
+            }
+
+            const tag=node.tagName.toUpperCase();
+            if(tag==='BR'){
+                node.remove();
+                flush(true);
+                continue;
+            }
+
+            if(tag==='P'){
+                flush();
+                const block=createEditorParagraph(inheritIndent||node.classList.contains('first-line-indent'));
+                while(node.firstChild)block.appendChild(node.firstChild);
+                if(!block.childNodes.length)block.appendChild(document.createElement('br'));
+                node.remove();
+                output.appendChild(block);
+                continue;
+            }
+
+            if(tag==='DIV'){
+                const nestedParagraphs=[...node.children].some(child=>child.tagName==='P'||child.tagName==='DIV');
+                if(nestedParagraphs){
+                    // 浏览器有时把多个自然段嵌套进一个 DIV；把这个容器展开成真正的兄弟段落。
+                    flush();
+                    const children=[...node.childNodes];
+                    const nextIndent=inheritIndent||node.classList.contains('first-line-indent');
+                    node.remove();
+                    processNodes(children,nextIndent);
+                }else{
+                    flush();
+                    node.classList.add('editor-paragraph');
+                    if(inheritIndent)node.classList.add('first-line-indent');
+                    if(!node.childNodes.length)node.appendChild(document.createElement('br'));
+                    output.appendChild(node);
+                }
+                continue;
+            }
+
+            if(['UL','OL','BLOCKQUOTE','TABLE','HR'].includes(tag)){
+                flush();
+                tagNestedEditorParagraphs(node);
+                output.appendChild(node);
+                continue;
+            }
+
+            // B/I/U/SPAN/IMG 等行内内容归入当前自然段。
+            ensureParagraph(inheritIndent).appendChild(node);
+        }
+    };
+
+    processNodes(source,false);
+    flush();
+    editor.replaceChildren(output);
+}
+function createSelectionMarker(kind){
+    const marker=document.createElement('span');
+    marker.dataset.editorSelectionMarker=kind;
+    marker.setAttribute('aria-hidden','true');
+    marker.style.cssText='display:inline-block;width:0;height:0;overflow:hidden;line-height:0;pointer-events:none;';
+    return marker;
+}
+function insertSelectionMarkers(editor,range){
+    const collapsed=range.collapsed;
+    const startMarker=createSelectionMarker('start');
+    const endMarker=collapsed?null:createSelectionMarker('end');
+
+    if(endMarker){
+        const endRange=range.cloneRange();
+        endRange.collapse(false);
+        endRange.insertNode(endMarker);
+    }
+    const startRange=range.cloneRange();
+    startRange.collapse(true);
+    startRange.insertNode(startMarker);
+    return{startMarker,endMarker,collapsed};
+}
+function restoreSelectionFromMarkers(editor,bookmark){
+    const{startMarker,endMarker,collapsed}=bookmark;
+    const sel=window.getSelection();
+    if(!sel||!startMarker.isConnected)return false;
+    const range=document.createRange();
+    if(collapsed){
+        range.setStartBefore(startMarker);
+        range.collapse(true);
+    }else if(endMarker?.isConnected){
+        range.setStartAfter(startMarker);
+        range.setEndBefore(endMarker);
+    }else return false;
+
+    sel.removeAllRanges();
+    sel.addRange(range);
+    // Range 是 live range；移除标记后边界会自动贴回相邻真实内容。
+    startMarker.remove();
+    endMarker?.remove();
+    editor.normalize();
+    return true;
+}
+function normalizeEditorParagraphModelPreservingSelection(editor){
+    const sel=window.getSelection();
+    if(!sel||sel.rangeCount===0||!selectionInside(editor)){
+        normalizeEditorParagraphModel(editor);
+        return false;
+    }
+    const bookmark=insertSelectionMarkers(editor,sel.getRangeAt(0).cloneRange());
+    normalizeEditorParagraphModel(editor);
+    return restoreSelectionFromMarkers(editor,bookmark);
+}
+function editorParagraphForNode(editor,node){
     let current=node?.nodeType===Node.ELEMENT_NODE?node:node?.parentElement;
     while(current&&current!==editor){
-        if(current.nodeType===Node.ELEMENT_NODE&&(current.tagName==='P'||current.tagName==='DIV'))return current;
+        if(current.nodeType===Node.ELEMENT_NODE&&current.classList.contains('editor-paragraph'))return current;
         current=current.parentElement;
     }
     return null;
 }
-function rangeTouchesNode(range,node){
-    try{return range.intersectsNode(node);}catch(error){return false;}
-}
-function createRangeMarker(kind){
-    const marker=document.createElement('span');
-    marker.dataset.rangeMarker=kind;
-    marker.setAttribute('aria-hidden','true');
-    marker.style.cssText='display:inline-block;width:0;height:0;overflow:hidden;line-height:0;';
-    return marker;
-}
-function normalizeEditorParagraphBlocks(editor){
-    // contenteditable 在 Chromium/Safari 中常把首段保留为编辑器直属文本节点，
-    // 后续回车段落才生成 DIV；粘贴文本还可能形成直属 BR。
-    // text-indent 只能作用于块级段落，因此这里把“直属文本/行内节点”统一包装成 DIV。
-    const structuralTags=new Set(['P','DIV','UL','OL','BLOCKQUOTE','TABLE','HR']);
-    let pending=[];
-    const flush=()=>{
-        if(!pending.length)return;
-        const block=document.createElement('div');
-        editor.insertBefore(block,pending[0]);
-        for(const node of pending)block.appendChild(node);
-        pending=[];
-    };
-    for(const node of [...editor.childNodes]){
-        if(node.nodeType===Node.ELEMENT_NODE&&structuralTags.has(node.tagName)){
-            flush();
-            continue;
-        }
-        if(node.nodeType===Node.ELEMENT_NODE&&node.tagName==='BR'){
-            // 编辑器直属 BR 代表一个自然段边界；分段后移除这个分隔 BR。
-            flush();
-            node.remove();
-            continue;
-        }
-        pending.push(node);
-    }
-    flush();
-}
-function normalizeParagraphsPreservingSelection(editor){
-    const sel=window.getSelection();
-    if(!sel||sel.rangeCount===0)return false;
-    const original=sel.getRangeAt(0);
-    if(!editor.contains(original.startContainer)||!editor.contains(original.endContainer))return false;
-
-    const collapsed=original.collapsed;
-    const startMarker=createRangeMarker('start');
-    const endMarker=collapsed?null:createRangeMarker('end');
-
-    if(endMarker){
-        const endRange=original.cloneRange();
-        endRange.collapse(false);
-        endRange.insertNode(endMarker);
-    }
-    const startRange=original.cloneRange();
-    startRange.collapse(true);
-    startRange.insertNode(startMarker);
-
-    normalizeEditorParagraphBlocks(editor);
-
-    const restored=document.createRange();
+function paragraphsTouchedByBookmark(editor,bookmark){
+    const{startMarker,endMarker,collapsed}=bookmark;
+    const paragraphs=[...editor.querySelectorAll('.editor-paragraph')];
     if(collapsed){
-        restored.setStartBefore(startMarker);
-        restored.collapse(true);
-    }else{
-        restored.setStartAfter(startMarker);
-        restored.setEndBefore(endMarker);
-    }
-    sel.removeAllRanges();
-    sel.addRange(restored);
-
-    // 删除标记后浏览器会把 Range 边界自动收敛到相邻真实内容。
-    startMarker.remove();
-    endMarker?.remove();
-    return true;
-}
-function selectedFirstLineIndentBlocks(editor){
-    const sel=window.getSelection();
-    if(!sel||sel.rangeCount===0)return [];
-    const range=sel.getRangeAt(0);
-    if(!editor.contains(range.startContainer)||!editor.contains(range.endContainer))return [];
-
-    if(range.collapsed){
-        const block=closestIndentParagraph(editor,range.startContainer);
+        const block=editorParagraphForNode(editor,startMarker);
         return block?[block]:[];
     }
+    if(!endMarker?.isConnected)return[];
 
-    const blocks=[];
-    const seen=new Set();
-    const walker=document.createTreeWalker(editor,NodeFilter.SHOW_TEXT,{acceptNode(node){
-        if(!node.nodeValue||!rangeTouchesNode(range,node))return NodeFilter.FILTER_REJECT;
-        const block=closestIndentParagraph(editor,node);
-        if(!block)return NodeFilter.FILTER_REJECT;
-        return NodeFilter.FILTER_ACCEPT;
-    }});
-    while(walker.nextNode()){
-        const block=closestIndentParagraph(editor,walker.currentNode);
-        if(block&&!seen.has(block)){
-            seen.add(block);
-            blocks.push(block);
-        }
-    }
-
-    // 选区跨过空段时也纳入处理。
-    for(const block of editor.querySelectorAll('p,div')){
-        if(seen.has(block)||!rangeTouchesNode(range,block))continue;
-        if(block.querySelector('p,div'))continue;
-        if((block.textContent||'').trim()===''&&block.querySelector('br')){
-            seen.add(block);
-            blocks.push(block);
-        }
-    }
-
-    blocks.sort((a,b)=>{
-        if(a===b)return 0;
-        const pos=a.compareDocumentPosition(b);
-        return pos&Node.DOCUMENT_POSITION_FOLLOWING?-1:1;
-    });
-    return blocks;
+    const startBlock=editorParagraphForNode(editor,startMarker);
+    const endBlock=editorParagraphForNode(editor,endMarker);
+    if(!startBlock||!endBlock)return[];
+    const startIndex=paragraphs.indexOf(startBlock);
+    const endIndex=paragraphs.indexOf(endBlock);
+    if(startIndex<0||endIndex<0)return[];
+    const from=Math.min(startIndex,endIndex);
+    const to=Math.max(startIndex,endIndex);
+    return paragraphs.slice(from,to+1);
 }
 function toggleFirstLineIndent(editor){
     restoreEditorRange(editor);
-
-    // 先统一段落 DOM，再取选区覆盖的所有自然段。这样首段裸文本、DIV 段落、
-    // 以及直属 BR 分隔的文本都会拥有各自独立的块容器，text-indent 才能逐段生效。
-    normalizeParagraphsPreservingSelection(editor);
-    const blocks=selectedFirstLineIndentBlocks(editor);
-    if(!blocks.length){
+    const sel=window.getSelection();
+    if(!sel||sel.rangeCount===0||!selectionInside(editor)){
         show('请将光标放在正文段落中，或选择一个/多个自然段','info');
+        return;
+    }
+
+    // 先在真实选区两端插入标记，再重建段落模型。标记会随文字一起移动，
+    // 因而不依赖浏览器点击工具栏后是否仍保留原 Range。
+    const bookmark=insertSelectionMarkers(editor,sel.getRangeAt(0).cloneRange());
+    normalizeEditorParagraphModel(editor);
+    const blocks=paragraphsTouchedByBookmark(editor,bookmark);
+    if(!blocks.length){
+        restoreSelectionFromMarkers(editor,bookmark);
+        show('没有识别到可缩进的自然段','info');
         return;
     }
 
     const shouldIndent=blocks.some(block=>!block.classList.contains('first-line-indent'));
     for(const block of blocks)block.classList.toggle('first-line-indent',shouldIndent);
 
+    restoreSelectionFromMarkers(editor,bookmark);
     editor.dispatchEvent(new Event('input',{bubbles:true}));
     rememberEditorRange(editor);
 }
@@ -2379,6 +2462,18 @@ function setupRichEditor(editor,toolbar,imageInput){
     editor.addEventListener('keyup',saveSelection);
     editor.addEventListener('touchend',saveSelection,{passive:true});
     editor.addEventListener('focus',saveSelection);
+    // 移动端拖动系统选区手柄时不一定触发 pointerup/keyup；selectionchange 才是可靠来源。
+    document.addEventListener('selectionchange',()=>{
+        if(selectionInside(editor))rememberEditorRange(editor);
+    });
+
+    // Enter 产生的新段落由浏览器先完成，再立即归一化并保持光标位置。
+    editor.addEventListener('input',event=>{
+        if(event.inputType==='insertParagraph'){
+            normalizeEditorParagraphModelPreservingSelection(editor);
+            rememberEditorRange(editor);
+        }
+    });
 
     imageInput.addEventListener('change',()=>{insertPendingImages(editor,imageInput.files||[]);imageInput.value='';});
     editor.addEventListener('paste',event=>{
@@ -2387,6 +2482,7 @@ function setupRichEditor(editor,toolbar,imageInput){
         const html=event.clipboardData?.getData('text/html')||'';
         const text=clipboardTextForEditor(plain,html);
         document.execCommand('insertText',false,text);
+        normalizeEditorParagraphModelPreservingSelection(editor);
         rememberEditorRange(editor);
     });
 }
