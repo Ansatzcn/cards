@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="app-build" content="2026-09-14-cards-note-v3-unix-attachment-folder">
+<meta name="app-build" content="2026-09-15-cards-inline-note-v4">
 <meta name="cards-data-file" content="cards_data.json">
 <title>Cards</title>
 <style>
@@ -129,6 +129,37 @@ button{cursor:pointer}
     font-size:.78rem;
     font-weight:700;
     letter-spacing:.04em;
+}
+
+.type-field-label{
+    color:#475569;
+    font-size:.78rem;
+    font-weight:700;
+    letter-spacing:.04em;
+}
+.type-options{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:18px;
+    min-height:36px;
+}
+.type-option{
+    display:inline-flex;
+    align-items:center;
+    gap:7px;
+    color:#334155;
+    font-size:.9rem!important;
+    font-weight:400!important;
+    letter-spacing:0!important;
+    cursor:pointer;
+}
+.type-option input{
+    width:16px;
+    height:16px;
+    margin:0;
+    accent-color:#1E40AF;
+    cursor:pointer;
 }
 .title-input{
     display:block;
@@ -320,7 +351,7 @@ button{cursor:pointer}
 }
 .cards-item::after{content:"";display:block;clear:both}
 .cards-item > *{max-width:100%}
-.cards-title,.cards-content,.cards-note{min-width:0;overflow-wrap:anywhere;word-break:break-word}
+.cards-title,.cards-content{min-width:0;overflow-wrap:anywhere;word-break:break-word}
 .cards-item:hover{background:#fafcff}
 .cards-title{
     margin-bottom:.45rem;
@@ -372,27 +403,26 @@ button{cursor:pointer}
     vertical-align:top;
 }
 .rich-editor th,.cards-content th{background:#f8fafc;font-weight:700}
-.cards-footer{
+.cards-heading-row{
     display:flex;
-    align-items:flex-end;
+    align-items:flex-start;
     justify-content:space-between;
     gap:12px;
     width:100%;
-    margin-top:.65rem;
+    margin-bottom:.45rem;
 }
-.cards-note{
-    min-width:0;
+.cards-heading-row .cards-title{
     flex:1 1 auto;
+    margin-bottom:0;
+}
+.inline-note{
     color:#64748b;
     font-size:.95rem;
-    font-weight:400;
-    line-height:1.5;
-    overflow-wrap:anywhere;
 }
 .item-actions{
     flex:0 0 auto;
     display:flex;
-    align-items:flex-end;
+    align-items:flex-start;
     justify-content:flex-end;
     gap:6px;
     margin-left:auto;
@@ -653,11 +683,9 @@ button{cursor:pointer}
         width:6px;
     }
     .editor-btn{padding:.26rem .52rem}
-    .cards-footer{align-items:flex-end}
     .cards-item{padding:1.05rem 1rem 1.2rem}
     .cards-title{font-size:1.05rem}
     .cards-content{font-size:1rem}
-    .cards-note{font-size:.95rem}
     .dialog{width:100%;border-radius:20px}
     .dialog-scroll{padding:1.2rem 1.2rem .8rem}
     .dialog-actions{padding:.85rem 1.2rem max(.85rem,env(safe-area-inset-bottom))}
@@ -741,7 +769,7 @@ button{cursor:pointer}
                 <input class="title-input" id="titleInput" type="text" autocomplete="off">
             </div>
             <div class="form-group" style="margin-bottom:.9rem">
-                <label for="contentInput">内容</label>
+                <label for="contentInput">正文</label>
                 <div class="rich-editor-wrap">
                     <div class="rich-editor" id="contentInput" contenteditable="true" role="textbox" aria-multiline="true"></div>
                     <div class="rich-toolbar" id="contentToolbar" role="toolbar" aria-label="正文格式工具">
@@ -759,15 +787,18 @@ button{cursor:pointer}
                         <button class="editor-btn" type="button" data-action="table" title="插入表格">表格</button>
                         <button class="editor-btn" type="button" data-action="hr" title="横线分隔线">分隔线</button>
                         <button class="editor-btn" type="button" data-command="undo" title="撤销">撤销</button>
-                        <button class="editor-btn" type="button" data-command="redo" title="重做">重做</button>
+                        <button class="editor-btn" type="button" data-action="note" title="将选中文字设为备注样式">备注</button>
                         <button class="editor-btn" type="button" data-command="removeFormat" title="清除格式">清除格式</button>
                     </div>
                     <input id="contentImageInput" type="file" accept="image/*" multiple hidden>
                 </div>
             </div>
-            <div class="form-group">
-                <label for="noteInput">备注</label>
-                <input class="title-input" id="noteInput" type="text" autocomplete="off">
+            <div class="form-group" style="margin-bottom:.9rem">
+                <div class="type-field-label">类型</div>
+                <div class="type-options" role="group" aria-label="类型">
+                    <label class="type-option" for="typeEntryInput"><input id="typeEntryInput" type="checkbox" checked>条目</label>
+                    <label class="type-option" for="typeQuestionInput"><input id="typeQuestionInput" type="checkbox">题目</label>
+                </div>
             </div>
             <button class="add-button" id="addBtn" type="button">提交</button>
         </section>
@@ -811,15 +842,18 @@ button{cursor:pointer}
                         <button class="editor-btn" type="button" data-action="table" title="插入表格">表格</button>
                         <button class="editor-btn" type="button" data-action="hr" title="横线分隔线">分隔线</button>
                         <button class="editor-btn" type="button" data-command="undo" title="撤销">撤销</button>
-                        <button class="editor-btn" type="button" data-command="redo" title="重做">重做</button>
+                        <button class="editor-btn" type="button" data-action="note" title="将选中文字设为备注样式">备注</button>
                         <button class="editor-btn" type="button" data-command="removeFormat" title="清除格式">清除格式</button>
                     </div>
                     <input id="editImageInput" type="file" accept="image/*" multiple hidden>
                 </div>
             </div>
             <div class="form-group">
-                <label for="editNote">备注</label>
-                <input class="title-input" id="editNote" type="text" autocomplete="off">
+                <div class="type-field-label">类型</div>
+                <div class="type-options" role="group" aria-label="类型">
+                    <label class="type-option" for="editTypeEntryInput"><input id="editTypeEntryInput" type="checkbox" checked>条目</label>
+                    <label class="type-option" for="editTypeQuestionInput"><input id="editTypeQuestionInput" type="checkbox">题目</label>
+                </div>
             </div>
         </div>
         <div class="dialog-actions">
@@ -910,11 +944,36 @@ const $=id=>document.getElementById(id);
 const statusDot=$('statusDot'),statusText=$('statusText'),syncBtn=$('syncBtn'),configBtn=$('configBtn'),
 exportBtn=$('exportBtn'),importBtn=$('importBtn'),fileInput=$('fileInput'),lastSyncTime=$('lastSyncTime'),
 lockedPanel=$('lockedPanel'),lockedConfigBtn=$('lockedConfigBtn'),appContent=$('appContent'),editorSection=$('editorSection'),
-titleInput=$('titleInput'),noteInput=$('noteInput'),contentInput=$('contentInput'),contentToolbar=$('contentToolbar'),contentImageInput=$('contentImageInput'),addBtn=$('addBtn'),countDisplay=$('countDisplay'),cardsList=$('cardsList'),
-editModal=$('editModal'),editTitle=$('editTitle'),editNote=$('editNote'),editContent=$('editContent'),editToolbar=$('editToolbar'),editImageInput=$('editImageInput'),editDelete=$('editDelete'),editCancel=$('editCancel'),editSave=$('editSave'),
+titleInput=$('titleInput'),contentInput=$('contentInput'),contentToolbar=$('contentToolbar'),contentImageInput=$('contentImageInput'),typeEntryInput=$('typeEntryInput'),typeQuestionInput=$('typeQuestionInput'),addBtn=$('addBtn'),countDisplay=$('countDisplay'),cardsList=$('cardsList'),
+editModal=$('editModal'),editTitle=$('editTitle'),editContent=$('editContent'),editToolbar=$('editToolbar'),editImageInput=$('editImageInput'),editTypeEntryInput=$('editTypeEntryInput'),editTypeQuestionInput=$('editTypeQuestionInput'),editDelete=$('editDelete'),editCancel=$('editCancel'),editSave=$('editSave'),
 configModal=$('configModal'),configForm=$('configForm'),cfgOwner=$('cfgOwner'),cfgRepo=$('cfgRepo'),
 cfgFile=$('cfgFile'),cfgToken=$('cfgToken'),rememberToken=$('rememberToken'),configCancel=$('configCancel'),
 configSave=$('configSave'),backToTopBtn=$('backToTopBtn'),toast=$('toast');
+
+function normalizeCardType(value){
+    const text=String(value??'').trim().toLowerCase();
+    return text==='question'||String(value??'').trim()==='题目'?'question':'entry';
+}
+function setTypeSelection(entryBox,questionBox,value='entry'){
+    const type=normalizeCardType(value);
+    entryBox.checked=type==='entry';
+    questionBox.checked=type==='question';
+}
+function getTypeSelection(entryBox,questionBox){
+    return questionBox.checked?'question':'entry';
+}
+function bindTypeSelection(entryBox,questionBox){
+    entryBox.addEventListener('change',()=>{
+        if(entryBox.checked)questionBox.checked=false;
+        else if(!questionBox.checked)entryBox.checked=true;
+    });
+    questionBox.addEventListener('change',()=>{
+        if(questionBox.checked)entryBox.checked=false;
+        else if(!entryBox.checked)questionBox.checked=true;
+    });
+}
+bindTypeSelection(typeEntryInput,typeQuestionInput);
+bindTypeSelection(editTypeEntryInput,editTypeQuestionInput);
 
 let state=[];
 let config={owner:'',repo:'',file:'cards_data.json',token:''};
@@ -955,7 +1014,7 @@ function validIso(v){
     const s=clean(v);
     return s&&!Number.isNaN(Date.parse(s))?new Date(s).toISOString():'';
 }
-const ALLOWED_TAGS=new Set(['B','STRONG','I','EM','U','S','STRIKE','P','DIV','BR','HR','UL','OL','LI','BLOCKQUOTE','IMG','TABLE','THEAD','TBODY','TFOOT','TR','TH','TD','CAPTION']);
+const ALLOWED_TAGS=new Set(['B','STRONG','I','EM','U','S','STRIKE','P','DIV','BR','HR','UL','OL','LI','BLOCKQUOTE','SPAN','IMG','TABLE','THEAD','TBODY','TFOOT','TR','TH','TD','CAPTION']);
 function normalizeHttpUrl(value){
     const url=String(value??'').trim();
     return /^https?:\/\/[^\s<>()]+$/i.test(url)?url:'';
@@ -1008,6 +1067,7 @@ function sanitizeHtml(value){
             }
 
             const keepIndent=(tag==='P'||tag==='DIV')&&child.classList.contains('first-line-indent');
+            const keepInlineNote=tag==='SPAN'&&child.classList.contains('inline-note');
             const imageSrc=tag==='IMG'?normalizeImageSrc(child.getAttribute('src')):'';
             const imageAlt=tag==='IMG'?String(child.getAttribute('alt')||'').slice(0,300):'';
             const uploadToken=tag==='IMG'&&/^img_[a-z0-9_-]+$/i.test(child.getAttribute('data-upload-token')||'')
@@ -1015,6 +1075,7 @@ function sanitizeHtml(value){
                 : '';
             for(const attribute of [...child.attributes])child.removeAttribute(attribute.name);
             if(keepIndent)child.className='first-line-indent';
+            if(keepInlineNote)child.className='inline-note';
             if(tag==='IMG'){
                 if(!imageSrc){child.remove();continue;}
                 child.setAttribute('src',imageSrc);
@@ -1186,20 +1247,20 @@ function normalizeEntry(x){
     if(!x||typeof x!=='object')return null;
     const id=clean(x.id)||uid();
     const title=String(x.title??'').trim();
-    const note=String(x.note??'').trim();
     const source=String(x.source??'').trim();
     const raw=String(x.content??'').trim();
     const content=x.contentFormat==='html'?sanitizeHtml(raw):plainTextToHtml(raw);
     const createdAt=validIso(x.createdAt);
+    const type=normalizeCardType(x.type);
     if((!title&&!hasMeaningfulContent(content))||!createdAt)return null;
     return{
         id,
         attachmentFolder:normalizeAttachmentFolder(x.attachmentFolder),
-        note,
         title,
         source,
         content,
         contentFormat:'html',
+        type,
         createdAt
     };
 }
@@ -1259,9 +1320,27 @@ function compareCardsByTitle(a,b){
     return String(a.id).localeCompare(String(b.id));
 }
 
+function compareCards(a,b){
+    const aType=normalizeCardType(a.type);
+    const bType=normalizeCardType(b.type);
+
+    // 类型优先：条目在前，题目在后。
+    if(aType!==bType)return aType==='entry'?-1:1;
+
+    // 题目按提交时间倒序：最新提交的排在最前。
+    if(aType==='question'){
+        const byTime=Date.parse(b.createdAt)-Date.parse(a.createdAt);
+        if(byTime!==0)return byTime;
+        return String(b.id).localeCompare(String(a.id));
+    }
+
+    // 条目按标题排序；无标题由 compareCardsByTitle 自动排在条目组末尾。
+    return compareCardsByTitle(a,b);
+}
+
 function normalizeState(value){
     const source=Array.isArray(value)?value:(value&&Array.isArray(value.entries)?value.entries:[]);
-    const entries=source.map(normalizeEntry).filter(Boolean).sort(compareCardsByTitle);
+    const entries=source.map(normalizeEntry).filter(Boolean).sort(compareCards);
     const used=new Set();
     for(const item of entries){
         const folder=normalizeAttachmentFolder(item.attachmentFolder);
@@ -1610,12 +1689,11 @@ function render(){
 
     cardsList.innerHTML=state.map(item=>`
         <article class="cards-item" data-id="${attr(item.id)}">
-            ${item.title?`<h3 class="cards-title">${esc(item.title)}</h3>`:''}
-            <div class="cards-content">${renderMarkdownLinks(item.content)}</div>
-            ${item.note||unlocked?`<div class="cards-footer">
-                ${item.note?`<div class="cards-note">${esc(item.note)}</div>`:''}
+            ${item.title||unlocked?`<div class="cards-heading-row">
+                ${item.title?`<h3 class="cards-title">${esc(item.title)}</h3>`:'<span></span>'}
                 ${unlocked?`<div class="item-actions"><button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">编辑</button></div>`:''}
             </div>`:''}
+            <div class="cards-content">${renderMarkdownLinks(item.content)}</div>
         </article>
     `).join('');
 
@@ -1847,14 +1925,61 @@ function ensureEditorSelection(editor){
     sel.removeAllRanges();
     sel.addRange(range);
 }
+function selectedFirstLineIndentBlocks(editor,allowFormat=true){
+    const sel=window.getSelection();
+    if(!sel||sel.rangeCount===0)return [];
+    const range=sel.getRangeAt(0);
+
+    // 光标未选择文字时，保持原来的单段切换行为。
+    if(range.collapsed){
+        let block=currentBlock(editor);
+        if(!block||block.tagName==='LI'||block.tagName==='BLOCKQUOTE'){
+            document.execCommand('formatBlock',false,'p');
+            block=currentBlock(editor);
+        }
+        return block&&['P','DIV'].includes(block.tagName)?[block]:[];
+    }
+
+    // 选区跨越多个自然段时，以“实际被选中的文字”为准逐段收集，
+    // 避免只处理 selection.anchorNode 所在的第一个段落。
+    const blocks=[];
+    const seen=new Set();
+    const walker=document.createTreeWalker(editor,NodeFilter.SHOW_TEXT);
+    while(walker.nextNode()){
+        const node=walker.currentNode;
+        if(!node.nodeValue)continue;
+        try{if(!range.intersectsNode(node))continue;}catch(e){continue;}
+
+        let start=0,end=node.nodeValue.length;
+        if(node===range.startContainer)start=range.startOffset;
+        if(node===range.endContainer)end=range.endOffset;
+        if(start>=end)continue;
+
+        let block=node.parentElement;
+        while(block&&block!==editor&&!['P','DIV'].includes(block.tagName))block=block.parentElement;
+        if(block&&block!==editor&&!seen.has(block)){
+            seen.add(block);
+            blocks.push(block);
+        }
+    }
+
+    // 极少数浏览器会把正文作为编辑器根节点下的裸文本；先转成段落再重试。
+    if(!blocks.length&&allowFormat){
+        document.execCommand('formatBlock',false,'p');
+        return selectedFirstLineIndentBlocks(editor,false);
+    }
+    return blocks;
+}
 function toggleFirstLineIndent(editor){
     ensureEditorSelection(editor);
-    let block=currentBlock(editor);
-    if(!block||block.tagName==='LI'||block.tagName==='BLOCKQUOTE'){
-        document.execCommand('formatBlock',false,'p');
-        block=currentBlock(editor);
-    }
-    if(block)block.classList.toggle('first-line-indent');
+    const blocks=selectedFirstLineIndentBlocks(editor);
+    if(!blocks.length)return;
+
+    // 只要选区中有一个自然段尚未缩进，本次操作就统一给全部自然段加缩进；
+    // 只有全部都已经缩进时，再次点击才统一撤销。
+    const shouldIndent=blocks.some(block=>!block.classList.contains('first-line-indent'));
+    for(const block of blocks)block.classList.toggle('first-line-indent',shouldIndent);
+    editor.dispatchEvent(new Event('input',{bubbles:true}));
 }
 function toggleQuote(editor){
     ensureEditorSelection(editor);
@@ -1926,6 +2051,53 @@ function insertMathTemplate(editor,display=false){
     document.execCommand('insertText',false,text);
     editor.dispatchEvent(new Event('input',{bubbles:true}));
 }
+function applyInlineNote(editor){
+    const sel=window.getSelection();
+    if(!sel||sel.rangeCount===0)return;
+    const range=sel.getRangeAt(0);
+    if(range.collapsed||!editor.contains(range.commonAncestorContainer)){
+        show('请先选择要设为备注的正文文字','info');
+        return;
+    }
+
+    const walker=document.createTreeWalker(editor,NodeFilter.SHOW_TEXT);
+    const segments=[];
+    while(walker.nextNode()){
+        const node=walker.currentNode;
+        if(!range.intersectsNode(node)||!node.nodeValue)continue;
+        let start=0,end=node.nodeValue.length;
+        if(node===range.startContainer)start=range.startOffset;
+        if(node===range.endContainer)end=range.endOffset;
+        if(start<end)segments.push({node,start,end});
+    }
+    if(!segments.length){
+        show('请先选择要设为备注的正文文字','info');
+        return;
+    }
+
+    const wrapped=[];
+    for(const segment of segments){
+        let node=segment.node;
+        if(segment.end<node.nodeValue.length)node.splitText(segment.end);
+        if(segment.start>0)node=node.splitText(segment.start);
+        if(node.parentElement?.classList.contains('inline-note')){wrapped.push(node.parentElement);continue;}
+        const span=document.createElement('span');
+        span.className='inline-note';
+        node.replaceWith(span);
+        span.appendChild(node);
+        wrapped.push(span);
+    }
+
+    if(wrapped.length){
+        const nextRange=document.createRange();
+        nextRange.setStartBefore(wrapped[0]);
+        nextRange.setEndAfter(wrapped[wrapped.length-1]);
+        sel.removeAllRanges();
+        sel.addRange(nextRange);
+    }
+    editor.dispatchEvent(new Event('input',{bubbles:true}));
+    editor.focus();
+}
 function runEditorAction(editor,button){
     ensureEditorSelection(editor);
     const command=button.dataset.command;
@@ -1933,6 +2105,10 @@ function runEditorAction(editor,button){
     if(command)document.execCommand(command,false,null);
     else if(action==='indent')toggleFirstLineIndent(editor);
     else if(action==='quote')toggleQuote(editor);
+    else if(action==='note'){
+        applyInlineNote(editor);
+        return;
+    }
     else if(action==='inlineMath'){
         insertMathTemplate(editor,false);
         return;
@@ -2073,16 +2249,16 @@ setupRichEditor(editContent,editToolbar,editImageInput);
 async function addEntry(){
     if(!unlocked||addBtn.disabled)return;
     const title=String(titleInput.value??'').trim();
-    const note=String(noteInput.value??'').trim();
     const initialContent=getEditorHtml(contentInput);
-    if(!title&&!hasMeaningfulContent(initialContent)){show('请输入标题或内容','error');titleInput.focus();return;}
+    const type=getTypeSelection(typeEntryInput,typeQuestionInput);
+    if(!title&&!hasMeaningfulContent(initialContent)){show('请输入标题或正文','error');titleInput.focus();return;}
     const id=uid();
     addBtn.disabled=true;
     try{
         const attachmentFolder=hasPendingImages(contentInput)?allocateAttachmentFolder():null;
         const content=await resolvePendingImages(contentInput,attachmentFolder);
-        state.push({id,attachmentFolder,note,title,source:'',content,contentFormat:'html',createdAt:new Date().toISOString()});
-        titleInput.value='';noteInput.value='';contentInput.innerHTML='';clearPendingUploads(contentInput);
+        state.push({id,attachmentFolder,title,source:'',content,contentFormat:'html',type,createdAt:new Date().toISOString()});
+        titleInput.value='';contentInput.innerHTML='';setTypeSelection(typeEntryInput,typeQuestionInput,'entry');clearPendingUploads(contentInput);
         markLocalChange();titleInput.focus();show('已提交','success');
     }catch(error){console.error(error);show(`提交失败：${formatError(error)}`,'error');}
     finally{addBtn.disabled=false;}
@@ -2090,8 +2266,8 @@ async function addEntry(){
 function editSnapshot(){
     return JSON.stringify({
         title:String(editTitle.value??''),
-        note:String(editNote.value??''),
-        content:getEditorHtml(editContent)
+        content:getEditorHtml(editContent),
+        type:getTypeSelection(editTypeEntryInput,editTypeQuestionInput)
     });
 }
 function closeEditModal(){
@@ -2107,8 +2283,8 @@ function openEdit(id){
     if(!item)return;
     editingId=id;
     editTitle.value=item.title||'';
-    editNote.value=String(item.note??'');
     setEditorHtml(editContent,item.content);
+    setTypeSelection(editTypeEntryInput,editTypeQuestionInput,item.type);
     editInitialSnapshot=editSnapshot();
     editModal.classList.remove('hidden');
 
@@ -2129,13 +2305,14 @@ async function saveEdit(){
     const item=state.find(x=>x.id===editingId);if(!item)return;
     const title=String(editTitle.value??'').trim();
     const initialContent=getEditorHtml(editContent);
-    if(!title&&!hasMeaningfulContent(initialContent)){show('标题和内容不能同时为空','error');editTitle.focus();return;}
+    const type=getTypeSelection(editTypeEntryInput,editTypeQuestionInput);
+    if(!title&&!hasMeaningfulContent(initialContent)){show('标题和正文不能同时为空','error');editTitle.focus();return;}
     editSave.disabled=true;
     try{
         const attachmentFolder=normalizeAttachmentFolder(item.attachmentFolder)
             ??(hasPendingImages(editContent)?allocateAttachmentFolder():null);
         const content=await resolvePendingImages(editContent,attachmentFolder);
-        item.attachmentFolder=attachmentFolder;item.title=title;item.note=String(editNote.value??'').trim();item.content=content;item.contentFormat='html';
+        item.attachmentFolder=attachmentFolder;item.title=title;item.content=content;item.contentFormat='html';item.type=type;
         closeEditModal();markLocalChange();show('已保存','success');
     }catch(error){console.error(error);show(`保存失败：${formatError(error)}`,'error');}
     finally{editSave.disabled=false;}
@@ -2225,12 +2402,6 @@ async function submitConfig(event){
 // ---------- 事件 ----------
 addBtn.addEventListener('click',addEntry);
 titleInput.addEventListener('keydown',event=>{
-    if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){
-        event.preventDefault();
-        addEntry();
-    }
-});
-noteInput.addEventListener('keydown',event=>{
     if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){
         event.preventDefault();
         addEntry();
