@@ -550,6 +550,27 @@ button{cursor:pointer}
     flex:0 0 auto;
 }
 
+/* 编辑弹窗类型选择：拉开选项距离，并缩小方框，避免视觉拥挤。 */
+#editModal .type-options{
+    display:grid;
+    grid-template-columns:repeat(2,max-content);
+    align-items:center;
+    column-gap:34px;
+    row-gap:10px;
+    min-height:34px;
+    padding:.15rem 0 .1rem 2px;
+}
+#editModal .type-option{
+    gap:8px;
+    min-height:28px;
+    font-size:.88rem!important;
+}
+#editModal .type-option input{
+    width:13px;
+    height:13px;
+    flex:0 0 13px;
+}
+
 /* 登录配置弹窗：内容独立滚动，底部按钮始终保留在可见区域 */
 #configModal{
     overflow:hidden;
@@ -1903,7 +1924,9 @@ function markLocalChange(){
 // ---------- 富文本编辑 ----------
 function selectionInside(editor){
     const sel=window.getSelection();
-    return sel&&sel.rangeCount>0&&editor.contains(sel.anchorNode);
+    if(!sel||sel.rangeCount===0)return false;
+    const range=sel.getRangeAt(0);
+    return editor.contains(range.startContainer)&&editor.contains(range.endContainer);
 }
 function currentBlock(editor){
     const sel=window.getSelection();
@@ -1925,61 +1948,111 @@ function ensureEditorSelection(editor){
     sel.removeAllRanges();
     sel.addRange(range);
 }
-function selectedFirstLineIndentBlocks(editor,allowFormat=true){
+function rememberEditorRange(editor){
+    const sel=window.getSelection();
+    if(!sel||sel.rangeCount===0)return false;
+    const range=sel.getRangeAt(0);
+    if(!editor.contains(range.startContainer)||!editor.contains(range.endContainer))return false;
+    savedEditorRanges.set(editor,range.cloneRange());
+    return true;
+}
+function restoreEditorRange(editor){
+    editor.focus({preventScroll:true});
+    const range=savedEditorRanges.get(editor);
+    if(!range)return ensureEditorSelection(editor);
+    try{
+        if(!editor.contains(range.startContainer)||!editor.contains(range.endContainer))throw new Error('stale range');
+        const sel=window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range.cloneRange());
+    }catch(error){
+        savedEditorRanges.delete(editor);
+        ensureEditorSelection(editor);
+    }
+}
+function closestIndentParagraph(editor,node){
+    let current=node?.nodeType===Node.ELEMENT_NODE?node:node?.parentElement;
+    while(current&&current!==editor){
+        if(current.nodeType===Node.ELEMENT_NODE&&(current.tagName==='P'||current.tagName==='DIV')){
+            // 选择最内层的段落容器，避免父 DIV 与子段落同时缩进造成双重缩进。
+            const inner=[...current.querySelectorAll(':scope > p, :scope > div')].find(child=>child.contains(node));
+            if(!inner)return current;
+        }
+        current=current.parentElement;
+    }
+    return null;
+}
+function rangeTouchesNode(range,node){
+    try{return range.intersectsNode(node);}catch(error){return false;}
+}
+function selectedFirstLineIndentBlocks(editor){
     const sel=window.getSelection();
     if(!sel||sel.rangeCount===0)return [];
     const range=sel.getRangeAt(0);
+    if(!editor.contains(range.startContainer)||!editor.contains(range.endContainer))return [];
 
-    // 光标未选择文字时，保持原来的单段切换行为。
+    // 无选区时仍只处理光标所在自然段。
     if(range.collapsed){
-        let block=currentBlock(editor);
-        if(!block||block.tagName==='LI'||block.tagName==='BLOCKQUOTE'){
-            document.execCommand('formatBlock',false,'p');
-            block=currentBlock(editor);
-        }
-        return block&&['P','DIV'].includes(block.tagName)?[block]:[];
+        let block=closestIndentParagraph(editor,range.startContainer)||currentBlock(editor);
+        if(block&&(block.tagName==='P'||block.tagName==='DIV'))return [block];
+        document.execCommand('formatBlock',false,'p');
+        block=closestIndentParagraph(editor,window.getSelection()?.anchorNode)||currentBlock(editor);
+        return block&&(block.tagName==='P'||block.tagName==='DIV')?[block]:[];
     }
 
-    // 选区跨越多个自然段时，以“实际被选中的文字”为准逐段收集，
-    // 避免只处理 selection.anchorNode 所在的第一个段落。
     const blocks=[];
     const seen=new Set();
-    const walker=document.createTreeWalker(editor,NodeFilter.SHOW_TEXT);
+
+    // 以实际选中的文本节点为基准，逐个找到其所属 P/DIV。
+    // 这比只看 anchorNode/commonAncestorContainer 更可靠，也能覆盖跨多个自然段的选区。
+    const walker=document.createTreeWalker(editor,NodeFilter.SHOW_TEXT,{acceptNode(node){
+        if(!node.nodeValue||!rangeTouchesNode(range,node))return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+    }});
     while(walker.nextNode()){
         const node=walker.currentNode;
-        if(!node.nodeValue)continue;
-        try{if(!range.intersectsNode(node))continue;}catch(e){continue;}
-
-        let start=0,end=node.nodeValue.length;
-        if(node===range.startContainer)start=range.startOffset;
-        if(node===range.endContainer)end=range.endOffset;
-        if(start>=end)continue;
-
-        let block=node.parentElement;
-        while(block&&block!==editor&&!['P','DIV'].includes(block.tagName))block=block.parentElement;
-        if(block&&block!==editor&&!seen.has(block)){
+        const block=closestIndentParagraph(editor,node);
+        if(block&&!seen.has(block)){
             seen.add(block);
             blocks.push(block);
         }
     }
 
-    // 极少数浏览器会把正文作为编辑器根节点下的裸文本；先转成段落再重试。
-    if(!blocks.length&&allowFormat){
-        document.execCommand('formatBlock',false,'p');
-        return selectedFirstLineIndentBlocks(editor,false);
+    // 还要覆盖被选中的空段落（例如 <p><br></p>），避免多段选择中出现漏段。
+    for(const block of editor.querySelectorAll('p,div')){
+        if(seen.has(block)||!rangeTouchesNode(range,block))continue;
+        const hasNestedParagraph=[...block.children].some(child=>child.matches?.('p,div')&&rangeTouchesNode(range,child));
+        if(hasNestedParagraph)continue;
+        if((block.textContent||'').trim()===''&&block.querySelector('br')){
+            seen.add(block);
+            blocks.push(block);
+        }
     }
+
+    // DOM 顺序排序，保证切换后选区和视觉结果稳定。
+    blocks.sort((a,b)=>{
+        if(a===b)return 0;
+        const pos=a.compareDocumentPosition(b);
+        return pos&Node.DOCUMENT_POSITION_FOLLOWING?-1:1;
+    });
     return blocks;
 }
 function toggleFirstLineIndent(editor){
-    ensureEditorSelection(editor);
+    restoreEditorRange(editor);
     const blocks=selectedFirstLineIndentBlocks(editor);
-    if(!blocks.length)return;
+    if(!blocks.length){
+        show('请将光标放在正文段落中，或选择一个/多个自然段','info');
+        return;
+    }
 
-    // 只要选区中有一个自然段尚未缩进，本次操作就统一给全部自然段加缩进；
-    // 只有全部都已经缩进时，再次点击才统一撤销。
+    // 多段选区统一处理：只要有一段未缩进，就给所有选中段落加缩进；
+    // 只有全部已缩进时再次点击才统一取消。
     const shouldIndent=blocks.some(block=>!block.classList.contains('first-line-indent'));
     for(const block of blocks)block.classList.toggle('first-line-indent',shouldIndent);
+
+    // DOM class 变化不会自动触发 input，这里显式通知保存/快照逻辑。
     editor.dispatchEvent(new Event('input',{bubbles:true}));
+    rememberEditorRange(editor);
 }
 function toggleQuote(editor){
     ensureEditorSelection(editor);
@@ -1987,16 +2060,6 @@ function toggleQuote(editor){
     document.execCommand('formatBlock',false,block?.tagName==='BLOCKQUOTE'?'p':'blockquote');
 }
 function editorImageInput(editor){return editor===editContent?editImageInput:contentImageInput;}
-function rememberEditorRange(editor){
-    const sel=window.getSelection();
-    if(sel&&sel.rangeCount>0&&editor.contains(sel.anchorNode))savedEditorRanges.set(editor,sel.getRangeAt(0).cloneRange());
-}
-function restoreEditorRange(editor){
-    editor.focus();
-    const range=savedEditorRanges.get(editor);
-    if(!range)return ensureEditorSelection(editor);
-    const sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);
-}
 function pendingMap(editor){let map=pendingUploads.get(editor);if(!map){map=new Map();pendingUploads.set(editor,map);}return map;}
 function clearPendingUploads(editor){
     const map=pendingMap(editor);
@@ -2099,7 +2162,7 @@ function applyInlineNote(editor){
     editor.focus();
 }
 function runEditorAction(editor,button){
-    ensureEditorSelection(editor);
+    restoreEditorRange(editor);
     const command=button.dataset.command;
     const action=button.dataset.action;
     if(command)document.execCommand(command,false,null);
@@ -2231,8 +2294,31 @@ function setupEditorScrollIndicator(editor){
 
 function setupRichEditor(editor,toolbar,imageInput){
     setupEditorScrollIndicator(editor);
-    toolbar.addEventListener('mousedown',event=>{const button=event.target.closest('.editor-btn');if(button)event.preventDefault();});
-    toolbar.addEventListener('click',event=>{const button=event.target.closest('.editor-btn');if(!button)return;runEditorAction(editor,button);});
+
+    // 工具栏点击前先冻结正文选区。pointerdown 覆盖鼠标、触控笔和触屏；
+    // mousedown 仅作为旧浏览器兜底。这样跨段选区不会在点击按钮时被工具栏夺走。
+    const preserveSelection=event=>{
+        const button=event.target.closest('.editor-btn');
+        if(!button)return;
+        rememberEditorRange(editor);
+        event.preventDefault();
+    };
+    toolbar.addEventListener('pointerdown',preserveSelection);
+    toolbar.addEventListener('mousedown',preserveSelection);
+    toolbar.addEventListener('click',event=>{
+        const button=event.target.closest('.editor-btn');
+        if(!button)return;
+        restoreEditorRange(editor);
+        runEditorAction(editor,button);
+    });
+
+    // 用户改变正文选区时持续保存最后一个有效 Range，供工具栏恢复。
+    const saveSelection=()=>rememberEditorRange(editor);
+    editor.addEventListener('pointerup',saveSelection);
+    editor.addEventListener('keyup',saveSelection);
+    editor.addEventListener('touchend',saveSelection,{passive:true});
+    editor.addEventListener('focus',saveSelection);
+
     imageInput.addEventListener('change',()=>{insertPendingImages(editor,imageInput.files||[]);imageInput.value='';});
     editor.addEventListener('paste',event=>{
         event.preventDefault();
@@ -2240,6 +2326,7 @@ function setupRichEditor(editor,toolbar,imageInput){
         const html=event.clipboardData?.getData('text/html')||'';
         const text=clipboardTextForEditor(plain,html);
         document.execCommand('insertText',false,text);
+        rememberEditorRange(editor);
     });
 }
 setupRichEditor(contentInput,contentToolbar,contentImageInput);
