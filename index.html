@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="app-build" content="2026-09-15-cards-inline-note-v4">
+<meta name="app-build" content="2026-09-15-cards-indent-paragraphs-v5">
 <meta name="cards-data-file" content="cards_data.json">
 <title>Cards</title>
 <style>
@@ -1973,11 +1973,7 @@ function restoreEditorRange(editor){
 function closestIndentParagraph(editor,node){
     let current=node?.nodeType===Node.ELEMENT_NODE?node:node?.parentElement;
     while(current&&current!==editor){
-        if(current.nodeType===Node.ELEMENT_NODE&&(current.tagName==='P'||current.tagName==='DIV')){
-            // 选择最内层的段落容器，避免父 DIV 与子段落同时缩进造成双重缩进。
-            const inner=[...current.querySelectorAll(':scope > p, :scope > div')].find(child=>child.contains(node));
-            if(!inner)return current;
-        }
+        if(current.nodeType===Node.ELEMENT_NODE&&(current.tagName==='P'||current.tagName==='DIV'))return current;
         current=current.parentElement;
     }
     return null;
@@ -1985,51 +1981,115 @@ function closestIndentParagraph(editor,node){
 function rangeTouchesNode(range,node){
     try{return range.intersectsNode(node);}catch(error){return false;}
 }
+function createRangeMarker(kind){
+    const marker=document.createElement('span');
+    marker.dataset.rangeMarker=kind;
+    marker.setAttribute('aria-hidden','true');
+    marker.style.cssText='display:inline-block;width:0;height:0;overflow:hidden;line-height:0;';
+    return marker;
+}
+function normalizeEditorParagraphBlocks(editor){
+    // contenteditable 在 Chromium/Safari 中常把首段保留为编辑器直属文本节点，
+    // 后续回车段落才生成 DIV；粘贴文本还可能形成直属 BR。
+    // text-indent 只能作用于块级段落，因此这里把“直属文本/行内节点”统一包装成 DIV。
+    const structuralTags=new Set(['P','DIV','UL','OL','BLOCKQUOTE','TABLE','HR']);
+    let pending=[];
+    const flush=()=>{
+        if(!pending.length)return;
+        const block=document.createElement('div');
+        editor.insertBefore(block,pending[0]);
+        for(const node of pending)block.appendChild(node);
+        pending=[];
+    };
+    for(const node of [...editor.childNodes]){
+        if(node.nodeType===Node.ELEMENT_NODE&&structuralTags.has(node.tagName)){
+            flush();
+            continue;
+        }
+        if(node.nodeType===Node.ELEMENT_NODE&&node.tagName==='BR'){
+            // 编辑器直属 BR 代表一个自然段边界；分段后移除这个分隔 BR。
+            flush();
+            node.remove();
+            continue;
+        }
+        pending.push(node);
+    }
+    flush();
+}
+function normalizeParagraphsPreservingSelection(editor){
+    const sel=window.getSelection();
+    if(!sel||sel.rangeCount===0)return false;
+    const original=sel.getRangeAt(0);
+    if(!editor.contains(original.startContainer)||!editor.contains(original.endContainer))return false;
+
+    const collapsed=original.collapsed;
+    const startMarker=createRangeMarker('start');
+    const endMarker=collapsed?null:createRangeMarker('end');
+
+    if(endMarker){
+        const endRange=original.cloneRange();
+        endRange.collapse(false);
+        endRange.insertNode(endMarker);
+    }
+    const startRange=original.cloneRange();
+    startRange.collapse(true);
+    startRange.insertNode(startMarker);
+
+    normalizeEditorParagraphBlocks(editor);
+
+    const restored=document.createRange();
+    if(collapsed){
+        restored.setStartBefore(startMarker);
+        restored.collapse(true);
+    }else{
+        restored.setStartAfter(startMarker);
+        restored.setEndBefore(endMarker);
+    }
+    sel.removeAllRanges();
+    sel.addRange(restored);
+
+    // 删除标记后浏览器会把 Range 边界自动收敛到相邻真实内容。
+    startMarker.remove();
+    endMarker?.remove();
+    return true;
+}
 function selectedFirstLineIndentBlocks(editor){
     const sel=window.getSelection();
     if(!sel||sel.rangeCount===0)return [];
     const range=sel.getRangeAt(0);
     if(!editor.contains(range.startContainer)||!editor.contains(range.endContainer))return [];
 
-    // 无选区时仍只处理光标所在自然段。
     if(range.collapsed){
-        let block=closestIndentParagraph(editor,range.startContainer)||currentBlock(editor);
-        if(block&&(block.tagName==='P'||block.tagName==='DIV'))return [block];
-        document.execCommand('formatBlock',false,'p');
-        block=closestIndentParagraph(editor,window.getSelection()?.anchorNode)||currentBlock(editor);
-        return block&&(block.tagName==='P'||block.tagName==='DIV')?[block]:[];
+        const block=closestIndentParagraph(editor,range.startContainer);
+        return block?[block]:[];
     }
 
     const blocks=[];
     const seen=new Set();
-
-    // 以实际选中的文本节点为基准，逐个找到其所属 P/DIV。
-    // 这比只看 anchorNode/commonAncestorContainer 更可靠，也能覆盖跨多个自然段的选区。
     const walker=document.createTreeWalker(editor,NodeFilter.SHOW_TEXT,{acceptNode(node){
         if(!node.nodeValue||!rangeTouchesNode(range,node))return NodeFilter.FILTER_REJECT;
+        const block=closestIndentParagraph(editor,node);
+        if(!block)return NodeFilter.FILTER_REJECT;
         return NodeFilter.FILTER_ACCEPT;
     }});
     while(walker.nextNode()){
-        const node=walker.currentNode;
-        const block=closestIndentParagraph(editor,node);
+        const block=closestIndentParagraph(editor,walker.currentNode);
         if(block&&!seen.has(block)){
             seen.add(block);
             blocks.push(block);
         }
     }
 
-    // 还要覆盖被选中的空段落（例如 <p><br></p>），避免多段选择中出现漏段。
+    // 选区跨过空段时也纳入处理。
     for(const block of editor.querySelectorAll('p,div')){
         if(seen.has(block)||!rangeTouchesNode(range,block))continue;
-        const hasNestedParagraph=[...block.children].some(child=>child.matches?.('p,div')&&rangeTouchesNode(range,child));
-        if(hasNestedParagraph)continue;
+        if(block.querySelector('p,div'))continue;
         if((block.textContent||'').trim()===''&&block.querySelector('br')){
             seen.add(block);
             blocks.push(block);
         }
     }
 
-    // DOM 顺序排序，保证切换后选区和视觉结果稳定。
     blocks.sort((a,b)=>{
         if(a===b)return 0;
         const pos=a.compareDocumentPosition(b);
@@ -2039,18 +2099,19 @@ function selectedFirstLineIndentBlocks(editor){
 }
 function toggleFirstLineIndent(editor){
     restoreEditorRange(editor);
+
+    // 先统一段落 DOM，再取选区覆盖的所有自然段。这样首段裸文本、DIV 段落、
+    // 以及直属 BR 分隔的文本都会拥有各自独立的块容器，text-indent 才能逐段生效。
+    normalizeParagraphsPreservingSelection(editor);
     const blocks=selectedFirstLineIndentBlocks(editor);
     if(!blocks.length){
         show('请将光标放在正文段落中，或选择一个/多个自然段','info');
         return;
     }
 
-    // 多段选区统一处理：只要有一段未缩进，就给所有选中段落加缩进；
-    // 只有全部已缩进时再次点击才统一取消。
     const shouldIndent=blocks.some(block=>!block.classList.contains('first-line-indent'));
     for(const block of blocks)block.classList.toggle('first-line-indent',shouldIndent);
 
-    // DOM class 变化不会自动触发 input，这里显式通知保存/快照逻辑。
     editor.dispatchEvent(new Event('input',{bubbles:true}));
     rememberEditorRange(editor);
 }
