@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="app-build" content="2026-09-15-cards-indent-paragraph-model-v6">
+<meta name="app-build" content="2026-09-16-cards-draft-math-aligned-v7">
 <meta name="cards-data-file" content="cards_data.json">
 <title>Cards</title>
 <style>
@@ -372,15 +372,18 @@ button{cursor:pointer}
 .cards-content a{color:#1E40AF;text-decoration:none}
 .cards-content a:hover,.cards-content a:focus-visible{color:#1E3A8A;text-decoration:underline;outline:none}
 
-/* 数学公式：MathJax SVG 输出在卡片内自适应；长公式允许横向滚动，避免撑破卡片。 */
-.cards-content mjx-container[jax="SVG"]{
+/* 数学公式：与 Demo / Note / Repo 统一使用 MathJax CHTML；长公式允许横向滚动。 */
+.cards-content mjx-container[jax="CHTML"]{
     max-width:100%;
-    overflow-x:auto;
-    overflow-y:hidden;
     vertical-align:middle;
 }
 .cards-content mjx-container[display="true"]{
+    display:block!important;
+    max-width:100%;
     margin:.8em 0!important;
+    padding:0!important;
+    overflow-x:auto;
+    overflow-y:hidden;
     text-align:center;
 }
 .rich-editor img,.cards-content img{
@@ -915,7 +918,7 @@ button{cursor:pointer}
             </div>
             <label class="remember-row">
                 <input type="checkbox" id="rememberToken" checked>
-                <span>在本设备保存 Token。取消勾选时，Token 仅保存到当前浏览器会话。</span>
+                <span>在本设备保存 Token。取消勾选时，Token 仅保留在当前页面打开期间。</span>
             </label>
         </div>
         <div class="dialog-actions">
@@ -948,10 +951,29 @@ function hashIdentity(value){
 }
 const NS=`cards_private:${hashIdentity(pageIdentity())}`;
 const CONFIG_KEY=`${NS}:config`;
-const TOKEN_LOCAL_KEY=`${NS}:token_local`;
-const TOKEN_SESSION_KEY=`${NS}:token_session`;
-const CACHE_KEY=`${NS}:cache`;
+const TOKEN_KEY=`${NS}:token`;
+const WORK_CACHE_KEY=`${NS}:cache`;
+const PUBLIC_CACHE_KEY=`${NS}:public_cache`;
 const META_KEY=`${NS}:meta`;
+
+// 正式运行页面不使用 Web Storage：配置、Token、同步元数据进入 IndexedDB；
+// 编辑工作副本进入 IndexedDB，并额外镜像到 OPFS。公开只读缓存独立存放，避免覆盖未同步工作副本。
+const APP_DB_NAME='cards_app_v2';
+const APP_DB_VERSION=1;
+const APP_STORE='kv';
+const WORK_OPFS_FILE=`cards_${hashIdentity(pageIdentity())}_working_v2.json`;
+
+// 草稿层与 Demo / Note / Repo 对齐：IndexedDB + OPFS 双层持久化。
+const DRAFT_DB_NAME='cards_entry_draft_v1';
+const DRAFT_DB_VERSION=1;
+const DRAFT_STORE='records';
+const ADD_DRAFT_KEY=`${NS}:draft:add`;
+const EDIT_DRAFT_KEY=`${NS}:draft:edit`;
+const DRAFT_FILE_STEM=`cards_${hashIdentity(pageIdentity())}_draft_v1`;
+const ADD_DRAFT_OPFS_FILE=`${DRAFT_FILE_STEM}_add.json`;
+const EDIT_DRAFT_OPFS_FILE=`${DRAFT_FILE_STEM}_edit.json`;
+const DRAFT_INTERVAL=5000;
+const DRAFT_LOCAL_DEBOUNCE=500;
 
 const MAX_BYTES=750*1024;
 const UNIX_FOLDER_MIN=1000000000,UNIX_FOLDER_MAX=9999999999;
@@ -1012,6 +1034,17 @@ let editingId='';
 let editInitialSnapshot='';
 let editOverlayPointer=null;
 let toastTimer=null;
+let addDraftTimer=null,addDraftInputTimer=null,addDraftLastSnapshot='';
+let editDraftTimer=null,editDraftInputTimer=null,editDraftLastSnapshot='';
+let draftWriteChain=Promise.resolve();
+let draftsRestoredThisSession=false;
+
+const appCache=new Map();
+let appDbPromise=null;
+let appWriteChain=Promise.resolve();
+let workingCopyOpfsRecord=null;
+let workingCopyOpfsWriteChain=Promise.resolve();
+
 const pendingUploads=new WeakMap();
 const savedEditorRanges=new WeakMap();
 
@@ -1166,25 +1199,26 @@ function clipboardHtmlToMarkdownText(html,fallback=''){
 }
 // 数学输入保护：如果纯文本剪贴板含有 TeX/LaTeX 公式，必须优先采用纯文本原文。
 // 这样不会因为剪贴板同时携带 HTML 版本而丢失 $ 定界符或反斜杠命令。
-function looksLikeMathPlainText(value){
-    const text=String(value??'');
-    if(!text)return false;
-    return /\$\$[\s\S]+?\$\$/.test(text)
-        || /(^|[^\\])\$(?!\$)[^\r\n$]+?(?<!\\)\$(?!\$)/m.test(text)
-        || /\\\([\s\S]+?\\\)/.test(text)
-        || /\\\[[\s\S]+?\\\]/.test(text)
-        || /\\(?:sqrt|frac|dfrac|tfrac|sum|prod|int|lim|log|ln|sin|cos|tan|alpha|beta|gamma|theta|pi|infty|mathbf|mathrm|text|begin|left|right)\b/.test(text);
+function looksLikeLatexPlainText(text){
+    const s=String(text||'');
+    if(!s)return false;
+    if(/\$\$[\s\S]+?\$\$/.test(s))return true;
+    if(/\$(?!\$)(?:\\.|[^$\r\n])+?\$/.test(s))return true;
+    if(/\\\([\s\S]+?\\\)/.test(s))return true;
+    if(/\\\[[\s\S]+?\\\]/.test(s))return true;
+    return /\\(?:frac|dfrac|tfrac|sqrt|sum|prod|int|iint|iiint|oint|lim|log|ln|sin|cos|tan|arcsin|arccos|arctan|alpha|beta|gamma|delta|epsilon|varepsilon|theta|vartheta|lambda|mu|nu|xi|pi|rho|sigma|tau|phi|varphi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|mathrm|mathbf|mathit|mathbb|mathcal|text|operatorname|begin|end|left|right|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|infty|partial|nabla|overline|underline|hat|widehat|bar|vec|dot|ddot|boxed)\b/.test(s);
 }
 function clipboardTextForEditor(plain,html){
     const rawPlain=String(plain??'');
-    if(looksLikeMathPlainText(rawPlain))return rawPlain.replace(/\r\n?/g,'\n');
+    if(looksLikeLatexPlainText(rawPlain))return rawPlain.replace(/\r\n?/g,'\n');
     return html?clipboardHtmlToMarkdownText(html,rawPlain):rawPlain;
 }
 
-// 动态加载 MathJax 4。只渲染总表正文，不处理 contenteditable，避免公式预览反向污染可编辑的原始 TeX。
+// 数学公式能力与 Demo / Note / Repo 对齐：MathJax 4 CHTML 主源 + 双回退。
 const MATHJAX_SOURCES=[
-    'https://cdn.jsdelivr.net/npm/mathjax@4.1.3/tex-svg.js',
-    'https://unpkg.com/mathjax@4.1.3/tex-svg.js'
+    'https://cdn.jsdelivr.net/npm/mathjax@4/tex-chtml.js',
+    'https://unpkg.com/mathjax@4/tex-chtml.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-chtml.min.js'
 ];
 let mathJaxLoadPromise=null;
 let mathRenderVersion=0;
@@ -1197,10 +1231,10 @@ function ensureMathJax(){
         ...existing,
         tex:{
             ...(existing.tex||{}),
-            inlineMath:{'[+]':[['$','$']]},
+            inlineMath:[['$','$'],['\\(','\\)']],
+            displayMath:[['$$','$$'],['\\[','\\]']],
             processEscapes:true
         },
-        svg:{...(existing.svg||{}),fontCache:'global'},
         startup:{...(existing.startup||{}),typeset:false}
     };
 
@@ -1217,7 +1251,7 @@ function ensureMathJax(){
             script.crossOrigin='anonymous';
             script.onload=()=>{
                 if(window.MathJax&&typeof window.MathJax.typesetPromise==='function')resolve(window.MathJax);
-                else tryNext();
+                else{script.remove();tryNext();}
             };
             script.onerror=()=>{script.remove();tryNext();};
             document.head.appendChild(script);
@@ -1232,11 +1266,21 @@ function clearTypesetMath(container){
     }
 }
 function queueMathTypeset(container,version){
+    const rawHtml=container.innerHTML;
     ensureMathJax().then(async mathJax=>{
         if(version!==mathRenderVersion||!container.isConnected)return;
-        try{await mathJax.typesetPromise([container]);}
-        catch(error){console.error('数学公式渲染失败',error);}
-    }).catch(error=>console.error(error));
+        const ready=mathJax.startup&&mathJax.startup.promise?mathJax.startup.promise:Promise.resolve();
+        try{
+            await ready;
+            await mathJax.typesetPromise([container]);
+        }catch(error){
+            console.error('数学公式渲染失败',error);
+            if(version===mathRenderVersion&&container.isConnected)container.innerHTML=rawHtml;
+        }
+    }).catch(error=>{
+        console.error(error);
+        if(version===mathRenderVersion&&container.isConnected)container.innerHTML=rawHtml;
+    });
 }
 
 function plainTextToHtml(value){
@@ -1364,12 +1408,141 @@ function adminConfigured(){
 function pathEncode(path){
     return String(path).split('/').filter(Boolean).map(encodeURIComponent).join('/');
 }
-function localSet(k,v){try{localStorage.setItem(k,v);return true}catch(e){return false}}
-function localGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
-function sessionSet(k,v){try{sessionStorage.setItem(k,v);return true}catch(e){return false}}
-function sessionGet(k){try{return sessionStorage.getItem(k)}catch(e){return null}}
-function removeStored(k,kind='local'){
-    try{(kind==='local'?localStorage:sessionStorage).removeItem(k)}catch(e){}
+function openAppDb(){
+    if(appDbPromise)return appDbPromise;
+    appDbPromise=new Promise((resolve,reject)=>{
+        if(!('indexedDB' in window)){reject(new Error('IndexedDB unavailable'));return;}
+        const request=indexedDB.open(APP_DB_NAME,APP_DB_VERSION);
+        request.onupgradeneeded=()=>{
+            const db=request.result;
+            if(!db.objectStoreNames.contains(APP_STORE))db.createObjectStore(APP_STORE,{keyPath:'key'});
+        };
+        request.onsuccess=()=>resolve(request.result);
+        request.onerror=()=>reject(request.error||new Error('IndexedDB open failed'));
+    });
+    return appDbPromise;
+}
+async function enqueueAppPut(key,value){
+    appWriteChain=appWriteChain.catch(()=>{}).then(async()=>{
+        const db=await openAppDb();
+        await new Promise((resolve,reject)=>{
+            const tx=db.transaction(APP_STORE,'readwrite');
+            tx.objectStore(APP_STORE).put({key:String(key),value:String(value)});
+            tx.oncomplete=()=>resolve();
+            tx.onerror=()=>reject(tx.error||new Error('IndexedDB write failed'));
+            tx.onabort=()=>reject(tx.error||new Error('IndexedDB write aborted'));
+        });
+    });
+    return appWriteChain;
+}
+async function enqueueAppDelete(key){
+    appWriteChain=appWriteChain.catch(()=>{}).then(async()=>{
+        const db=await openAppDb();
+        await new Promise((resolve,reject)=>{
+            const tx=db.transaction(APP_STORE,'readwrite');
+            tx.objectStore(APP_STORE).delete(String(key));
+            tx.oncomplete=()=>resolve();
+            tx.onerror=()=>reject(tx.error||new Error('IndexedDB delete failed'));
+            tx.onabort=()=>reject(tx.error||new Error('IndexedDB delete aborted'));
+        });
+    });
+    return appWriteChain;
+}
+function appGet(key){
+    const k=String(key);
+    return appCache.has(k)?appCache.get(k):null;
+}
+function appSet(key,value){
+    const k=String(key),v=String(value);
+    appCache.set(k,v);
+    return enqueueAppPut(k,v);
+}
+function appDelete(key){
+    const k=String(key);
+    appCache.delete(k);
+    return enqueueAppDelete(k);
+}
+async function readWorkingCopyOpfs(){
+    if(!navigator.storage?.getDirectory)return null;
+    try{
+        const root=await navigator.storage.getDirectory();
+        const handle=await root.getFileHandle(WORK_OPFS_FILE);
+        const file=await handle.getFile();
+        const record=JSON.parse(await file.text());
+        return record&&typeof record==='object'&&typeof record.cacheJson==='string'?record:null;
+    }catch(error){return null;}
+}
+function queueWorkingCopyOpfsWrite(snapshot=state){
+    const normalized=normalizeState(snapshot);
+    const record={
+        savedAt:Date.now(),
+        fingerprint:fingerprint(normalized),
+        cacheJson:JSON.stringify(normalized)
+    };
+    workingCopyOpfsRecord=record;
+    workingCopyOpfsWriteChain=workingCopyOpfsWriteChain.catch(()=>{}).then(async()=>{
+        if(!navigator.storage?.getDirectory)return false;
+        const root=await navigator.storage.getDirectory();
+        const handle=await root.getFileHandle(WORK_OPFS_FILE,{create:true});
+        const writable=await handle.createWritable();
+        await writable.write(JSON.stringify(record));
+        await writable.close();
+        return true;
+    }).catch(error=>{
+        console.warn('OPFS 工作副本写入失败',error);
+        return false;
+    });
+    return workingCopyOpfsWriteChain;
+}
+async function initAppStorage(){
+    const db=await openAppDb();
+    await new Promise((resolve,reject)=>{
+        const tx=db.transaction(APP_STORE,'readonly');
+        const request=tx.objectStore(APP_STORE).getAll();
+        request.onsuccess=()=>{
+            appCache.clear();
+            for(const row of request.result||[])appCache.set(String(row.key),String(row.value??''));
+            resolve();
+        };
+        request.onerror=()=>reject(request.error||new Error('IndexedDB read failed'));
+    });
+    try{if(navigator.storage?.persist)await navigator.storage.persist();}catch(error){}
+    workingCopyOpfsRecord=await readWorkingCopyOpfs();
+    if(appGet(WORK_CACHE_KEY)===null&&workingCopyOpfsRecord?.cacheJson){
+        appCache.set(WORK_CACHE_KEY,String(workingCopyOpfsRecord.cacheJson));
+        await enqueueAppPut(WORK_CACHE_KEY,String(workingCopyOpfsRecord.cacheJson));
+    }
+}
+async function persistWorkingCopyNow(snapshot=state){
+    const normalized=normalizeState(snapshot);
+    const json=JSON.stringify(normalized);
+    appCache.set(WORK_CACHE_KEY,json);
+    const idbPromise=enqueueAppPut(WORK_CACHE_KEY,json);
+    const opfsPromise=queueWorkingCopyOpfsWrite(normalized);
+    const results=await Promise.allSettled([idbPromise,opfsPromise]);
+    if(results[0].status==='rejected')throw results[0].reason||new Error('IndexedDB 工作副本写入失败');
+    return normalized;
+}
+function saveWorkingCache(){
+    const normalized=normalizeState(state);
+    const json=JSON.stringify(normalized);
+    appCache.set(WORK_CACHE_KEY,json);
+    enqueueAppPut(WORK_CACHE_KEY,json).catch(error=>console.error('IndexedDB 工作副本写入失败',error));
+    queueWorkingCopyOpfsWrite(normalized);
+    return true;
+}
+function loadWorkingCache(){
+    try{return normalizeState(JSON.parse(appGet(WORK_CACHE_KEY)||'[]'));}catch(error){return [];}
+}
+function savePublicCache(){
+    const normalized=normalizeState(state);
+    const json=JSON.stringify(normalized);
+    appCache.set(PUBLIC_CACHE_KEY,json);
+    enqueueAppPut(PUBLIC_CACHE_KEY,json).catch(error=>console.error('公开缓存写入失败',error));
+    return true;
+}
+function loadPublicCache(){
+    try{return normalizeState(JSON.parse(appGet(PUBLIC_CACHE_KEY)||'[]'));}catch(error){return [];}
 }
 function show(msg,type='info'){
     toast.textContent=msg;
@@ -1393,43 +1566,47 @@ function formatError(error){
 // ---------- 本地配置与锁定 ----------
 function loadConfig(){
     let saved={};
-    try{saved=JSON.parse(localGet(CONFIG_KEY)||'{}')||{}}catch(e){}
+    try{saved=JSON.parse(appGet(CONFIG_KEY)||'{}')||{};}catch(error){}
     config.owner=clean(saved.owner);
     config.repo=clean(saved.repo);
     config.file=clean(saved.file)||'cards_data.json';
-    config.token=clean(localGet(TOKEN_LOCAL_KEY)||sessionGet(TOKEN_SESSION_KEY)||'');
+    config.token=clean(appGet(TOKEN_KEY)||'');
 }
-function saveConfig(){
-    localSet(CONFIG_KEY,JSON.stringify({
-        owner:config.owner,
-        repo:config.repo,
-        file:config.file
-    }));
-    if(rememberToken.checked){
-        localSet(TOKEN_LOCAL_KEY,config.token);
-        removeStored(TOKEN_SESSION_KEY,'session');
-    }else{
-        sessionSet(TOKEN_SESSION_KEY,config.token);
-        removeStored(TOKEN_LOCAL_KEY,'local');
-    }
+async function saveConfig(){
+    const jobs=[
+        appSet(CONFIG_KEY,JSON.stringify({
+            owner:config.owner,
+            repo:config.repo,
+            file:config.file
+        }))
+    ];
+    if(rememberToken.checked)jobs.push(appSet(TOKEN_KEY,config.token));
+    else jobs.push(appDelete(TOKEN_KEY));
+    const results=await Promise.allSettled(jobs);
+    const failed=results.find(result=>result.status==='rejected');
+    if(failed)throw failed.reason||new Error('配置持久化失败');
 }
 function loadMeta(){
     try{
-        const x=JSON.parse(localGet(META_KEY)||'{}')||{};
+        const x=JSON.parse(appGet(META_KEY)||'{}')||{};
         meta={
             target:clean(x.target),
             fingerprint:typeof x.fingerprint==='string'?x.fingerprint:null,
             sha:clean(x.sha)||null,
             lastSyncAt:clean(x.lastSyncAt)||null
         };
-    }catch(e){
+    }catch(error){
         meta={target:'',fingerprint:null,sha:null,lastSyncAt:null};
     }
 }
-function saveMeta(){localSet(META_KEY,JSON.stringify(meta))}
-function saveCache(){localSet(CACHE_KEY,JSON.stringify(normalizeState(state)))}
+function saveMeta(){
+    return appSet(META_KEY,JSON.stringify(meta)).catch(error=>console.error('同步元数据写入失败',error));
+}
+function saveCache(){
+    return unlocked?saveWorkingCache():savePublicCache();
+}
 function loadCache(){
-    try{return normalizeState(JSON.parse(localGet(CACHE_KEY)||'[]'))}catch(e){return []}
+    return loadWorkingCache();
 }
 function record(snapshot,sha){
     meta={
@@ -1453,6 +1630,306 @@ function setUnlocked(on){
     importBtn.disabled=!unlocked;
     exportBtn.disabled=!publicLoaded&&!unlocked;
     configBtn.textContent=unlocked?'配置':'编辑登录';
+    if(unlocked){
+        if(addDraftTimer===null)startAddDraftAutosave();
+    }else{
+        stopAddDraftAutosave();
+        stopEditDraftAutosave();
+    }
+}
+
+// ---------- IndexedDB + OPFS 草稿 ----------
+function draftRecordValid(record){
+    return !!record&&typeof record==='object'&&['draft','tombstone'].includes(record.kind)&&Number(record.savedAt)>0;
+}
+function openDraftDb(){
+    return new Promise((resolve,reject)=>{
+        if(!('indexedDB' in window)){reject(new Error('IndexedDB unavailable'));return;}
+        const request=indexedDB.open(DRAFT_DB_NAME,DRAFT_DB_VERSION);
+        request.onupgradeneeded=()=>{
+            const db=request.result;
+            if(!db.objectStoreNames.contains(DRAFT_STORE))db.createObjectStore(DRAFT_STORE,{keyPath:'key'});
+        };
+        request.onsuccess=()=>resolve(request.result);
+        request.onerror=()=>reject(request.error||new Error('IndexedDB open failed'));
+    });
+}
+async function draftDbRead(key){
+    const db=await openDraftDb();
+    try{
+        return await new Promise((resolve,reject)=>{
+            const tx=db.transaction(DRAFT_STORE,'readonly');
+            const req=tx.objectStore(DRAFT_STORE).get(key);
+            req.onsuccess=()=>resolve(req.result?.record||null);
+            req.onerror=()=>reject(req.error||new Error('IndexedDB read failed'));
+        });
+    }finally{db.close();}
+}
+async function draftDbWrite(key,record){
+    const db=await openDraftDb();
+    try{
+        await new Promise((resolve,reject)=>{
+            const tx=db.transaction(DRAFT_STORE,'readwrite');
+            tx.objectStore(DRAFT_STORE).put({key,record});
+            tx.oncomplete=()=>resolve();
+            tx.onerror=()=>reject(tx.error||new Error('IndexedDB write failed'));
+            tx.onabort=()=>reject(tx.error||new Error('IndexedDB write aborted'));
+        });
+    }finally{db.close();}
+}
+async function draftOpfsRead(fileName){
+    if(!navigator.storage?.getDirectory)return null;
+    try{
+        const root=await navigator.storage.getDirectory();
+        const handle=await root.getFileHandle(fileName);
+        const file=await handle.getFile();
+        const record=JSON.parse(await file.text());
+        return draftRecordValid(record)?record:null;
+    }catch(error){return null;}
+}
+async function draftOpfsWrite(fileName,record){
+    if(!navigator.storage?.getDirectory)return false;
+    try{
+        const root=await navigator.storage.getDirectory();
+        const handle=await root.getFileHandle(fileName,{create:true});
+        const writable=await handle.createWritable();
+        await writable.write(JSON.stringify(record));
+        await writable.close();
+        return true;
+    }catch(error){
+        console.warn('OPFS 草稿写入失败',error);
+        return false;
+    }
+}
+async function requestPersistentDraftStorage(){
+    try{if(navigator.storage?.persist)await navigator.storage.persist();}catch(error){}
+}
+async function readBestDraftRecord(key,fileName){
+    let dbRecord=null,opfsRecord=null;
+    try{dbRecord=await draftDbRead(key);}catch(error){console.warn('IndexedDB 草稿读取失败',error);}
+    opfsRecord=await draftOpfsRead(fileName);
+    const records=[dbRecord,opfsRecord].filter(draftRecordValid).sort((a,b)=>Number(b.savedAt)-Number(a.savedAt));
+    return records[0]||null;
+}
+function enqueueDraftWrite(key,fileName,record){
+    draftWriteChain=draftWriteChain.catch(()=>{}).then(async()=>{
+        const results=await Promise.allSettled([
+            draftDbWrite(key,record),
+            draftOpfsWrite(fileName,record)
+        ]);
+        const dbOk=results[0].status==='fulfilled';
+        const opfsOk=results[1].status==='fulfilled'&&results[1].value!==false;
+        if(!dbOk&&!opfsOk)throw new Error('草稿本地持久化失败');
+    });
+    return draftWriteChain;
+}
+function dataUrlFromFile(file){
+    return new Promise((resolve,reject)=>{
+        const reader=new FileReader();
+        reader.onload=()=>resolve(String(reader.result||''));
+        reader.onerror=()=>reject(reader.error||new Error('读取待上传图片失败'));
+        reader.readAsDataURL(file);
+    });
+}
+async function serializePendingImages(editor){
+    const result=[];
+    const map=pendingMap(editor);
+    for(const [token,pending] of map){
+        let dataUrl=String(pending.draftDataUrl||'');
+        if(!dataUrl){
+            dataUrl=await dataUrlFromFile(pending.file);
+            pending.draftDataUrl=dataUrl;
+        }
+        result.push({
+            token,
+            name:String(pending.file?.name||'image'),
+            type:String(pending.file?.type||'application/octet-stream'),
+            lastModified:Number(pending.file?.lastModified)||Date.now(),
+            dataUrl
+        });
+    }
+    return result;
+}
+async function restorePendingImages(editor,items){
+    clearPendingUploads(editor);
+    const map=pendingMap(editor);
+    const validTokens=new Set();
+    for(const item of Array.isArray(items)?items:[]){
+        const token=String(item?.token||'');
+        const dataUrl=String(item?.dataUrl||'');
+        if(!/^img_[a-z0-9_-]+$/i.test(token)||!/^data:image\//i.test(dataUrl))continue;
+        try{
+            const blob=await (await fetch(dataUrl)).blob();
+            const file=new File([blob],String(item.name||'image'),{
+                type:String(item.type||blob.type||'image/*'),
+                lastModified:Number(item.lastModified)||Date.now()
+            });
+            const previewUrl=URL.createObjectURL(file);
+            map.set(token,{file,previewUrl,draftDataUrl:dataUrl});
+            validTokens.add(token);
+            const node=[...editor.querySelectorAll('img[data-upload-token]')].find(img=>img.getAttribute('data-upload-token')===token);
+            if(node)node.setAttribute('src',previewUrl);
+        }catch(error){console.warn('恢复待上传图片失败',error);}
+    }
+    for(const img of [...editor.querySelectorAll('img[data-upload-token]')]){
+        const token=img.getAttribute('data-upload-token')||'';
+        if(!validTokens.has(token))img.remove();
+    }
+}
+function addDraftSnapshot(){
+    return JSON.stringify({
+        title:String(titleInput.value??''),
+        content:getEditorHtml(contentInput),
+        type:getTypeSelection(typeEntryInput,typeQuestionInput),
+        pendingTokens:[...pendingMap(contentInput).keys()].sort()
+    });
+}
+function editDraftSnapshot(){
+    return JSON.stringify({
+        editingId:String(editingId||''),
+        title:String(editTitle.value??''),
+        content:getEditorHtml(editContent),
+        type:getTypeSelection(editTypeEntryInput,editTypeQuestionInput),
+        pendingTokens:[...pendingMap(editContent).keys()].sort()
+    });
+}
+function addDraftHasChanges(){
+    const empty=JSON.stringify({title:'',content:'',type:'entry',pendingTokens:[]});
+    return addDraftSnapshot()!==empty;
+}
+function editDraftHasChanges(){
+    return !!editingId&&editSnapshot()!==editInitialSnapshot;
+}
+async function buildAddDraftRecord(){
+    const draft={
+        version:1,mode:'add',title:String(titleInput.value??''),
+        content:getEditorHtml(contentInput),
+        type:getTypeSelection(typeEntryInput,typeQuestionInput),
+        pendingImages:await serializePendingImages(contentInput),
+        savedAt:Date.now()
+    };
+    return{kind:'draft',savedAt:draft.savedAt,draft};
+}
+async function buildEditDraftRecord(){
+    const draft={
+        version:1,mode:'edit',editingId:String(editingId||''),
+        title:String(editTitle.value??''),
+        content:getEditorHtml(editContent),
+        type:getTypeSelection(editTypeEntryInput,editTypeQuestionInput),
+        pendingImages:await serializePendingImages(editContent),
+        savedAt:Date.now()
+    };
+    return{kind:'draft',savedAt:draft.savedAt,draft};
+}
+async function saveAddDraftLocal(force=false){
+    if(!unlocked)return false;
+    if(!addDraftHasChanges()){
+        if(addDraftLastSnapshot){await clearAddDraft();}
+        return false;
+    }
+    const snapshot=addDraftSnapshot();
+    if(!force&&snapshot===addDraftLastSnapshot)return true;
+    try{
+        const record=await buildAddDraftRecord();
+        addDraftLastSnapshot=snapshot;
+        await enqueueDraftWrite(ADD_DRAFT_KEY,ADD_DRAFT_OPFS_FILE,record);
+        return true;
+    }catch(error){console.error('新增草稿自动保存失败',error);return false;}
+}
+async function saveEditDraftLocal(force=false){
+    if(editModal.classList.contains('hidden')||!editingId)return false;
+    if(!editDraftHasChanges()){
+        if(editDraftLastSnapshot){await clearEditDraft();}
+        return false;
+    }
+    const snapshot=editDraftSnapshot();
+    if(!force&&snapshot===editDraftLastSnapshot)return true;
+    try{
+        const record=await buildEditDraftRecord();
+        editDraftLastSnapshot=snapshot;
+        await enqueueDraftWrite(EDIT_DRAFT_KEY,EDIT_DRAFT_OPFS_FILE,record);
+        return true;
+    }catch(error){console.error('编辑草稿自动保存失败',error);return false;}
+}
+function markAddDraftChanged(){
+    if(!unlocked)return;
+    clearTimeout(addDraftInputTimer);
+    addDraftInputTimer=setTimeout(()=>saveAddDraftLocal(false),DRAFT_LOCAL_DEBOUNCE);
+}
+function markEditDraftChanged(){
+    if(editModal.classList.contains('hidden')||!editingId)return;
+    clearTimeout(editDraftInputTimer);
+    editDraftInputTimer=setTimeout(()=>saveEditDraftLocal(false),DRAFT_LOCAL_DEBOUNCE);
+}
+function startAddDraftAutosave(){
+    stopAddDraftAutosave();
+    addDraftTimer=setInterval(()=>saveAddDraftLocal(true),DRAFT_INTERVAL);
+}
+function stopAddDraftAutosave(){
+    if(addDraftTimer!==null){clearInterval(addDraftTimer);addDraftTimer=null;}
+    clearTimeout(addDraftInputTimer);addDraftInputTimer=null;
+}
+function startEditDraftAutosave(){
+    stopEditDraftAutosave();
+    editDraftTimer=setInterval(()=>saveEditDraftLocal(true),DRAFT_INTERVAL);
+}
+function stopEditDraftAutosave(){
+    if(editDraftTimer!==null){clearInterval(editDraftTimer);editDraftTimer=null;}
+    clearTimeout(editDraftInputTimer);editDraftInputTimer=null;
+}
+function clearAddDraft(){
+    addDraftLastSnapshot='';
+    return enqueueDraftWrite(ADD_DRAFT_KEY,ADD_DRAFT_OPFS_FILE,{kind:'tombstone',savedAt:Date.now()})
+        .catch(error=>console.warn('新增草稿清除标记写入失败',error));
+}
+function clearEditDraft(){
+    editDraftLastSnapshot='';
+    return enqueueDraftWrite(EDIT_DRAFT_KEY,EDIT_DRAFT_OPFS_FILE,{kind:'tombstone',savedAt:Date.now()})
+        .catch(error=>console.warn('编辑草稿清除标记写入失败',error));
+}
+async function applyAddDraft(draft){
+    titleInput.value=String(draft?.title??'');
+    setEditorHtml(contentInput,String(draft?.content??''));
+    setTypeSelection(typeEntryInput,typeQuestionInput,draft?.type||'entry');
+    await restorePendingImages(contentInput,draft?.pendingImages||[]);
+    addDraftLastSnapshot=addDraftSnapshot();
+    contentInput.dispatchEvent(new Event('editor-scroll-refresh'));
+}
+async function applyEditDraft(draft){
+    const id=String(draft?.editingId||'');
+    if(!id||!state.some(item=>item.id===id))return false;
+    openEdit(id);
+    editTitle.value=String(draft?.title??'');
+    setEditorHtml(editContent,String(draft?.content??''));
+    setTypeSelection(editTypeEntryInput,editTypeQuestionInput,draft?.type||'entry');
+    await restorePendingImages(editContent,draft?.pendingImages||[]);
+    editDraftLastSnapshot=editDraftSnapshot();
+    editContent.dispatchEvent(new Event('editor-scroll-refresh'));
+    return true;
+}
+async function restoreCardsDraftsIfAny(){
+    if(!unlocked||draftsRestoredThisSession)return false;
+    draftsRestoredThisSession=true;
+    const [addRecord,editRecord]=await Promise.all([
+        readBestDraftRecord(ADD_DRAFT_KEY,ADD_DRAFT_OPFS_FILE),
+        readBestDraftRecord(EDIT_DRAFT_KEY,EDIT_DRAFT_OPFS_FILE)
+    ]);
+    let restoredAdd=false,restoredEdit=false;
+    if(addRecord?.kind==='draft'&&addRecord.draft?.mode==='add'){
+        await applyAddDraft(addRecord.draft);
+        restoredAdd=true;
+    }
+    if(editRecord?.kind==='draft'&&editRecord.draft?.mode==='edit'){
+        restoredEdit=await applyEditDraft(editRecord.draft);
+        if(!restoredEdit&&!restoredAdd){
+            await applyAddDraft({...editRecord.draft,mode:'add'});
+            restoredAdd=true;
+        }
+    }
+    if(restoredAdd&&restoredEdit)show('已恢复上次未提交的新增草稿和编辑草稿','info');
+    else if(restoredEdit)show('已恢复上次未提交的编辑草稿','info');
+    else if(restoredAdd)show('已恢复上次未提交的草稿','info');
+    return restoredAdd||restoredEdit;
 }
 
 // ---------- 公开只读数据 ----------
@@ -1491,7 +1968,7 @@ async function loadPublicView(){
         console.error(error);
 
         // 已访问过的设备可退回最近一次缓存；新访客则显示明确错误。
-        const cached=loadCache();
+        const cached=loadPublicCache();
         state=cached;
         publicLoaded=cached.length>0;
         render();
@@ -1735,6 +2212,7 @@ async function login(showResult=true){
             if(showResult)show('Token 验证成功，已启用编辑','success');
         }
 
+        await restoreCardsDraftsIfAny();
         return true;
     }catch(error){
         console.error(error);
@@ -2206,13 +2684,29 @@ async function resolvePendingImages(editor,folder){
     }
     return getEditorHtml(editor);
 }
-function insertMathTemplate(editor,display=false){
-    ensureEditorSelection(editor);
+function insertMathMarkup(editor,display=false){
+    editor.focus();
     const sel=window.getSelection();
-    const selected=sel&&sel.rangeCount>0&&editor.contains(sel.anchorNode)?sel.toString():'';
-    const body=selected||'x';
-    const text=display?`$$${body}$$`:`$${body}$`;
-    document.execCommand('insertText',false,text);
+    let range=null;
+    if(sel&&sel.rangeCount){
+        const candidate=sel.getRangeAt(0);
+        if(editor.contains(candidate.commonAncestorContainer))range=candidate;
+    }
+    if(!range){
+        range=document.createRange();
+        range.selectNodeContents(editor);
+        range.collapse(false);
+    }
+    const mark=display?'$$':'$';
+    const selected=range.toString();
+    const node=document.createTextNode(mark+selected+mark);
+    range.deleteContents();
+    range.insertNode(node);
+    const caret=document.createRange();
+    if(selected)caret.setStartAfter(node);
+    else caret.setStart(node,mark.length);
+    caret.collapse(true);
+    if(sel){sel.removeAllRanges();sel.addRange(caret);}
     editor.dispatchEvent(new Event('input',{bubbles:true}));
 }
 function applyInlineNote(editor){
@@ -2274,10 +2768,10 @@ function runEditorAction(editor,button){
         return;
     }
     else if(action==='inlineMath'){
-        insertMathTemplate(editor,false);
+        insertMathMarkup(editor,false);
         return;
     }else if(action==='displayMath'){
-        insertMathTemplate(editor,true);
+        insertMathMarkup(editor,true);
         return;
     }else if(action==='image'){
         rememberEditorRange(editor);
@@ -2459,8 +2953,19 @@ async function addEntry(){
         const attachmentFolder=hasPendingImages(contentInput)?allocateAttachmentFolder():null;
         const content=await resolvePendingImages(contentInput,attachmentFolder);
         state.push({id,attachmentFolder,title,source:'',content,contentFormat:'html',type,createdAt:new Date().toISOString()});
-        titleInput.value='';contentInput.innerHTML='';setTypeSelection(typeEntryInput,typeQuestionInput,'entry');clearPendingUploads(contentInput);
-        markLocalChange();titleInput.focus();show('已提交','success');
+
+        // 与最终版 Demo / Note / Repo 一致：先确认正式浏览器工作副本落盘，再清未提交草稿。
+        await persistWorkingCopyNow(state);
+        await clearAddDraft();
+
+        titleInput.value='';
+        contentInput.innerHTML='';
+        setTypeSelection(typeEntryInput,typeQuestionInput,'entry');
+        clearPendingUploads(contentInput);
+        addDraftLastSnapshot=addDraftSnapshot();
+
+        markLocalChange();
+        titleInput.focus();show('已提交','success');
     }catch(error){console.error(error);show(`提交失败：${formatError(error)}`,'error');}
     finally{addBtn.disabled=false;}
 }
@@ -2471,7 +2976,9 @@ function editSnapshot(){
         type:getTypeSelection(editTypeEntryInput,editTypeQuestionInput)
     });
 }
-function closeEditModal(){
+function closeEditModal(clearDraft=true){
+    stopEditDraftAutosave();
+    if(clearDraft)clearEditDraft();
     clearPendingUploads(editContent);
     editingId='';
     editInitialSnapshot='';
@@ -2499,6 +3006,8 @@ function openEdit(id){
         });
     });
 
+    editDraftLastSnapshot='';
+    startEditDraftAutosave();
     setTimeout(()=>editTitle.focus(),30);
 }
 async function saveEdit(){
@@ -2514,8 +3023,19 @@ async function saveEdit(){
             ??(hasPendingImages(editContent)?allocateAttachmentFolder():null);
         const content=await resolvePendingImages(editContent,attachmentFolder);
         item.attachmentFolder=attachmentFolder;item.title=title;item.content=content;item.contentFormat='html';item.type=type;
-        closeEditModal();markLocalChange();show('已保存','success');
-    }catch(error){console.error(error);show(`保存失败：${formatError(error)}`,'error');}
+
+        stopEditDraftAutosave();
+        // 与最终版 Demo / Note / Repo 一致：IndexedDB + OPFS 正式工作副本完成后，才清草稿。
+        await persistWorkingCopyNow(state);
+        await clearEditDraft();
+        closeEditModal(false);
+        markLocalChange();
+        show('已保存','success');
+    }catch(error){
+        console.error(error);
+        if(!editModal.classList.contains('hidden')&&editingId)startEditDraftAutosave();
+        show(`保存失败：${formatError(error)}`,'error');
+    }
     finally{editSave.disabled=false;}
 }
 async function deleteEntry(id){
@@ -2526,7 +3046,11 @@ async function deleteEntry(id){
 其附件文件夹也会删除。`))return false;
     try{
         await deleteAttachmentFolder(item.attachmentFolder);
-        state=state.filter(x=>x.id!==id);markLocalChange();show('已删除','success');return true;
+        state=state.filter(x=>x.id!==id);
+        await persistWorkingCopyNow(state);
+        markLocalChange();
+        show('已删除','success');
+        return true;
     }catch(error){console.error(error);show(`删除失败：${formatError(error)}`,'error');return false;}
 }
 
@@ -2569,7 +3093,7 @@ function openConfig(){
     cfgRepo.value=config.repo;
     cfgFile.value=config.file||'cards_data.json';
     cfgToken.value=config.token;
-    rememberToken.checked=Boolean(localGet(TOKEN_LOCAL_KEY));
+    rememberToken.checked=Boolean(appGet(TOKEN_KEY));
     updateVisibleViewportHeight();
     configModal.classList.remove('hidden');
     const scrollBody=configForm.querySelector('.dialog-scroll');
@@ -2589,11 +3113,16 @@ async function submitConfig(event){
 
     const oldTarget=target();
     config={owner,repo,file,token};
-    saveConfig();
+    try{
+        await saveConfig();
+    }catch(error){
+        show(`配置保存失败：${formatError(error)}`,'error');
+        return;
+    }
 
     if(oldTarget&&oldTarget!==target()){
         meta={target:'',fingerprint:null,sha:null,lastSyncAt:null};
-        saveMeta();
+        await saveMeta();
     }
 
     configModal.classList.add('hidden');
@@ -2623,8 +3152,13 @@ cardsList.addEventListener('click',event=>{
 editDelete.addEventListener('click',async()=>{
     if(!editingId||editDelete.disabled)return;
     editDelete.disabled=true;
-    try{if(await deleteEntry(editingId))closeEditModal();}
-    finally{editDelete.disabled=false;}
+    try{
+        if(await deleteEntry(editingId)){
+            stopEditDraftAutosave();
+            await clearEditDraft();
+            closeEditModal(false);
+        }
+    }finally{editDelete.disabled=false;}
 });
 editCancel.addEventListener('click',closeEditModal);
 editSave.addEventListener('click',saveEdit);
@@ -2656,6 +3190,26 @@ editContent.addEventListener('keydown',event=>{
         event.preventDefault();
         saveEdit();
     }
+});
+
+// 草稿输入：0.5 秒防抖 + 5 秒强制快照；页面隐藏/退出时再补存一次。
+titleInput.addEventListener('input',markAddDraftChanged);
+contentInput.addEventListener('input',markAddDraftChanged);
+typeEntryInput.addEventListener('change',markAddDraftChanged);
+typeQuestionInput.addEventListener('change',markAddDraftChanged);
+editTitle.addEventListener('input',markEditDraftChanged);
+editContent.addEventListener('input',markEditDraftChanged);
+editTypeEntryInput.addEventListener('change',markEditDraftChanged);
+editTypeQuestionInput.addEventListener('change',markEditDraftChanged);
+document.addEventListener('visibilitychange',()=>{
+    if(document.visibilityState==='hidden'){
+        saveAddDraftLocal(true);
+        saveEditDraftLocal(true);
+    }
+});
+window.addEventListener('pagehide',()=>{
+    saveAddDraftLocal(true);
+    saveEditDraftLocal(true);
 });
 
 configBtn.addEventListener('click',openConfig);
@@ -2705,6 +3259,14 @@ updateBackToTopVisibility();
 
 // ---------- 启动 ----------
 (async()=>{
+    requestPersistentDraftStorage();
+    try{
+        await initAppStorage();
+    }catch(error){
+        console.error('Cards 浏览器持久化初始化失败',error);
+        show('浏览器持久化初始化失败；请检查 IndexedDB 权限','error');
+    }
+
     loadConfig();
     loadMeta();
     setUnlocked(false);
