@@ -351,7 +351,7 @@ button{cursor:pointer}
 }
 .cards-item::after{content:"";display:block;clear:both}
 .cards-item > *{max-width:100%}
-.cards-title,.cards-content{min-width:0;overflow-wrap:anywhere;word-break:break-word}
+.cards-title,.cards-content,.cards-code{min-width:0;overflow-wrap:anywhere;word-break:break-word}
 .cards-item:hover{background:#fafcff}
 .cards-title{
     margin-bottom:.45rem;
@@ -403,17 +403,22 @@ button{cursor:pointer}
     vertical-align:top;
 }
 .rich-editor th,.cards-content th{background:#f8fafc;font-weight:700}
-.cards-heading-row{
+ .cards-footer{
     display:flex;
-    align-items:flex-start;
+    align-items:flex-end;
     justify-content:space-between;
     gap:12px;
     width:100%;
-    margin-bottom:.45rem;
+    margin-top:.65rem;
 }
-.cards-heading-row .cards-title{
+.cards-code{
+    min-width:0;
     flex:1 1 auto;
-    margin-bottom:0;
+    color:#64748b;
+    font-size:.82rem;
+    font-weight:400;
+    line-height:1.5;
+    overflow-wrap:anywhere;
 }
 .inline-note{
     color:#64748b;
@@ -422,7 +427,7 @@ button{cursor:pointer}
 .item-actions{
     flex:0 0 auto;
     display:flex;
-    align-items:flex-start;
+    align-items:flex-end;
     justify-content:flex-end;
     gap:6px;
     margin-left:auto;
@@ -440,13 +445,13 @@ button{cursor:pointer}
     background:transparent;
     color:#64748b;
     font-weight:500;
-    text-decoration:underline;
-    text-underline-offset:2px;
+    text-decoration:none;
 }
 .edit-btn:hover,
 .edit-btn:focus-visible{
     background:transparent;
     color:#1e3a8a;
+    text-decoration:none;
     outline:none;
 }
 .delete-btn{background:#fee2e2;color:#991b1b}
@@ -1343,6 +1348,13 @@ function compareCardsByTitle(a,b){
     return String(a.id).localeCompare(String(b.id));
 }
 
+function cardUnixCode(item){
+    const ms=Date.parse(item?.createdAt||'');
+    if(!Number.isFinite(ms))return '';
+    const seconds=Math.floor(ms/1000);
+    return String(seconds).padStart(10,'0').slice(0,8);
+}
+
 function compareCards(a,b){
     const aType=normalizeCardType(a.type);
     const bType=normalizeCardType(b.type);
@@ -1350,15 +1362,15 @@ function compareCards(a,b){
     // 类型优先：条目在前，题目在后。
     if(aType!==bType)return aType==='entry'?-1:1;
 
-    // 题目按提交时间倒序：最新提交的排在最前。
-    if(aType==='question'){
-        const byTime=Date.parse(b.createdAt)-Date.parse(a.createdAt);
-        if(byTime!==0)return byTime;
-        return String(b.id).localeCompare(String(a.id));
-    }
+    // 条目与题目分别按“提交时间对应 Unix 秒级时间戳的前 8 位”倒序。
+    const aCode=cardUnixCode(a);
+    const bCode=cardUnixCode(b);
+    if(aCode!==bCode)return bCode.localeCompare(aCode);
 
-    // 条目按标题排序；无标题由 compareCardsByTitle 自动排在条目组末尾。
-    return compareCardsByTitle(a,b);
+    // 编码允许重复；同编码时仅用完整提交时间和 id 保证排序稳定。
+    const byTime=Date.parse(b.createdAt)-Date.parse(a.createdAt);
+    if(byTime!==0)return byTime;
+    return String(b.id).localeCompare(String(a.id));
 }
 
 function normalizeState(value){
@@ -1712,11 +1724,12 @@ function render(){
 
     cardsList.innerHTML=state.map(item=>`
         <article class="cards-item" data-id="${attr(item.id)}">
-            ${item.title||unlocked?`<div class="cards-heading-row">
-                ${item.title?`<h3 class="cards-title">${esc(item.title)}</h3>`:'<span></span>'}
-                ${unlocked?`<div class="item-actions"><button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">编辑</button></div>`:''}
-            </div>`:''}
+            ${item.title?`<h3 class="cards-title">${esc(item.title)}</h3>`:''}
             <div class="cards-content">${renderMarkdownLinks(item.content)}</div>
+            <div class="cards-footer">
+                <div class="cards-code">${esc(cardUnixCode(item))}</div>
+                ${unlocked?`<div class="item-actions"><button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">编辑</button></div>`:''}
+            </div>
         </article>
     `).join('');
 
