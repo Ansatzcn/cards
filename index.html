@@ -1292,62 +1292,6 @@ function normalizeEntry(x){
         createdAt
     };
 }
-const zhTitleCollator=new Intl.Collator('zh-CN-u-co-pinyin',{
-    sensitivity:'base',
-    numeric:true
-});
-const enTitleCollator=new Intl.Collator('en',{
-    sensitivity:'base',
-    numeric:true
-});
-
-function getTitleSortGroup(title){
-    const value=String(title??'').trim();
-    if(!value)return 4;
-
-    const first=value.charAt(0);
-    if(/[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/u.test(first))return 0;
-    if(/[A-Za-z]/.test(first))return 1;
-    if(/[0-9]/.test(first))return 2;
-    return 3;
-}
-
-function getLeadingNumber(title){
-    const match=String(title??'').trim().match(/^\d+(?:\.\d+)?/);
-    return match?Number(match[0]):Number.POSITIVE_INFINITY;
-}
-
-function compareCardsByTitle(a,b){
-    const aTitle=String(a.title??'').trim();
-    const bTitle=String(b.title??'').trim();
-    const aGroup=getTitleSortGroup(aTitle);
-    const bGroup=getTitleSortGroup(bTitle);
-
-    // 中文 → 英文 → 数字 → 其他符号 → 无标题
-    if(aGroup!==bGroup)return aGroup-bGroup;
-
-    let compared=0;
-    if(aGroup===0){
-        // 中文按拼音排序，相当于按汉字拼音首字母由 A 到 Z。
-        compared=zhTitleCollator.compare(aTitle,bTitle);
-    }else if(aGroup===1){
-        compared=enTitleCollator.compare(aTitle,bTitle);
-    }else if(aGroup===2){
-        const numberDiff=getLeadingNumber(aTitle)-getLeadingNumber(bTitle);
-        if(numberDiff!==0)return numberDiff;
-        compared=enTitleCollator.compare(aTitle,bTitle);
-    }else if(aGroup===3){
-        compared=zhTitleCollator.compare(aTitle,bTitle);
-    }
-
-    if(compared!==0)return compared;
-
-    // 完全同序时保持稳定：先录入的在前。
-    const byTime=Date.parse(a.createdAt)-Date.parse(b.createdAt);
-    if(byTime!==0)return byTime;
-    return String(a.id).localeCompare(String(b.id));
-}
-
 function cardUnixCode(item){
     const ms=Date.parse(item?.createdAt||'');
     if(!Number.isFinite(ms))return '';
