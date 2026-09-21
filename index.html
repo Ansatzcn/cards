@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="app-build" content="2026-09-16-cards-draft-math-aligned-v7">
+<meta name="app-build" content="2026-09-22-cards-html-backup-v8">
 <meta name="cards-data-file" content="cards_data.json">
 <title>Cards</title>
 <style>
@@ -780,7 +780,7 @@ button{cursor:pointer}
             <button class="btn" id="configBtn" type="button">编辑登录</button>
             <button class="btn" id="exportBtn" type="button" disabled>导出</button>
             <button class="btn" id="importBtn" type="button" disabled>导入</button>
-            <input type="file" id="fileInput" accept=".json,application/json" hidden>
+            <input type="file" id="fileInput" accept=".html,text/html,.json,application/json" hidden>
         </div>
         <span class="last-sync" id="lastSyncTime">正在加载公开内容…</span>
     </section>
@@ -976,6 +976,7 @@ const DRAFT_INTERVAL=5000;
 const DRAFT_LOCAL_DEBOUNCE=500;
 
 const MAX_BYTES=750*1024;
+const MAX_IMPORT_BYTES=4*1024*1024;
 const UNIX_FOLDER_MIN=1000000000,UNIX_FOLDER_MAX=9999999999;
 const AUTO_DELAY=700;
 const API_VERSION='2026-03-10';
@@ -3055,35 +3056,160 @@ async function deleteEntry(id){
 }
 
 // ---------- 导入导出 ----------
-function downloadJson(){
-    if(!unlocked)return;
-    const payload={schemaVersion:5,entries:normalizeState(state)};
-    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;
-    a.download=`cards_backup_${formatDate(new Date().toISOString())}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+const BACKUP_FORMAT='cards-html-backup';
+const BACKUP_DATA_ID='cards-backup-data';
+const EXPORT_SITE_NAME='cards';
+
+function exportUnixTimestamp(){
+    const timestamp=Math.floor(Date.now()/1000);
+    if(!Number.isSafeInteger(timestamp)||timestamp<UNIX_FOLDER_MIN||timestamp>UNIX_FOLDER_MAX){
+        throw new Error('当前时间无法生成 10 位 Unix 导出时间戳');
+    }
+    return String(timestamp);
+}
+function backupJsonForHtml(payload){
+    return JSON.stringify(payload,null,2)
+        .replace(/&/g,'\\u0026')
+        .replace(/</g,'\\u003c')
+        .replace(/>/g,'\\u003e');
+}
+function buildBackupHtml(payload){
+    const exportedAt=payload.exportedAt;
+    const exportedUnix=payload.exportedAtUnix;
+    const entries=normalizeState(payload.entries);
+    const cardsHtml=entries.length?entries.map(item=>`
+        <article class="backup-card">
+            ${item.title?`<h2>${esc(item.title)}</h2>`:''}
+            <div class="backup-content">${renderMarkdownLinks(item.content)}</div>
+            <dl class="backup-meta">
+                <div><dt>类型</dt><dd>${item.type==='question'?'题目':'条目'}</dd></div>
+                <div><dt>提交时间</dt><dd>${esc(item.createdAt)}</dd></div>
+                <div><dt>ID</dt><dd>${esc(item.id)}</dd></div>
+                ${item.attachmentFolder!==null?`<div><dt>附件目录</dt><dd>${esc(item.attachmentFolder)}</dd></div>`:''}
+                ${item.source?`<div><dt>来源</dt><dd>${esc(item.source)}</dd></div>`:''}
+            </dl>
+        </article>
+    `).join(''):'<p class="empty">导出时没有 Cards 数据。</p>';
+
+    const backupData=backupJsonForHtml({...payload,entries});
+    const backupScript='<script id="'+BACKUP_DATA_ID+'" type="application/json" data-cards-backup="true">'
+        +backupData
+        +'</scr'+'ipt>';
+
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="cards-backup-format" content="${BACKUP_FORMAT}">
+<meta name="cards-backup-exported-unix" content="${attr(exportedUnix)}">
+<title>Cards Backup ${attr(exportedUnix)}</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f5f7fa;color:#0f172a;font-family:"Times New Roman","Microsoft YaHei","PingFang SC",serif;line-height:1.68}
+main{width:min(100% - 24px,1000px);margin:24px auto;padding:28px;background:#fff;border-radius:24px;box-shadow:0 16px 36px rgba(15,23,42,.12)}
+h1{margin:0 0 8px;font-size:2rem}
+.summary{margin:0 0 24px;color:#64748b}
+.notice{margin:0 0 24px;padding:12px 16px;border:1px solid #cbd5e1;border-radius:14px;background:#f8fafc;color:#475569}
+.backup-list{display:flex;flex-direction:column;gap:16px}
+.backup-card{padding:20px;border:1px solid #e2e8f0;border-radius:18px}
+.backup-card h2{margin:0 0 8px;color:#1e40af;font-size:1.12rem}
+.backup-content{overflow-wrap:anywhere}
+.backup-content img{display:block;max-width:100%;height:auto;margin:.75em auto;border-radius:10px}
+.backup-content table{width:100%;margin:.8em 0;border-collapse:collapse}
+.backup-content th,.backup-content td{padding:.38em .55em;border:1px solid #cbd5e1;vertical-align:top}
+.backup-content blockquote{margin:.55em 0;padding:.25em .8em;border-left:3px solid #cbd5e1;color:#475569}
+.backup-content a{color:#1e40af}
+.backup-meta{display:grid;gap:4px;margin:14px 0 0;padding-top:12px;border-top:1px solid #e2e8f0;color:#64748b;font-size:.8rem}
+.backup-meta div{display:grid;grid-template-columns:72px 1fr;gap:8px}
+.backup-meta dt{font-weight:700}.backup-meta dd{margin:0;overflow-wrap:anywhere}
+.empty{color:#94a3b8}
+@media(max-width:700px){main{margin:10px auto;padding:18px;border-radius:18px}.backup-card{padding:15px}}
+</style>
+</head>
+<body>
+<main>
+    <h1>Cards 导出备份</h1>
+    <p class="summary">导出时间：${esc(exportedAt)} · Unix：${esc(exportedUnix)} · 共 ${entries.length} 条</p>
+    <p class="notice">此 HTML 同时保存可阅读快照与结构化恢复数据。cards_data.json 出现故障时，可在 Cards 网站登录编辑后使用“导入”选择本文件恢复。</p>
+    <section class="backup-list">${cardsHtml}</section>
+</main>
+${backupScript}
+</body>
+</html>`;
+}
+function downloadHtmlBackup(){
+    if(!publicLoaded&&!state.length)return;
+    try{
+        const exportedAt=new Date().toISOString();
+        const exportedAtUnix=exportUnixTimestamp();
+        const payload={
+            backupFormat:BACKUP_FORMAT,
+            schemaVersion:5,
+            exportedAt,
+            exportedAtUnix,
+            entries:normalizeState(state)
+        };
+        const html=buildBackupHtml(payload);
+        const blob=new Blob([html],{type:'text/html;charset=utf-8'});
+        const url=URL.createObjectURL(blob);
+        const a=document.createElement('a');
+        a.href=url;
+        a.download=`${EXPORT_SITE_NAME}${exportedAtUnix}.html`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(()=>URL.revokeObjectURL(url),0);
+    }catch(error){
+        console.error(error);
+        show(`导出失败：${error.message}`,'error');
+    }
+}
+function parseImportedBackup(raw,file){
+    const text=String(raw??'').replace(/^\uFEFF/,'').trim();
+    if(!text)throw new Error('文件为空');
+
+    const htmlLike=/\.html?$/i.test(file?.name||'')
+        ||/text\/html/i.test(file?.type||'')
+        ||/^<!doctype\s+html/i.test(text)
+        ||/<html[\s>]/i.test(text.slice(0,1000));
+
+    if(!htmlLike)return normalizeState(JSON.parse(text));
+
+    const doc=new DOMParser().parseFromString(text,'text/html');
+    const dataNode=doc.getElementById(BACKUP_DATA_ID)
+        ||doc.querySelector('script[data-cards-backup="true"][type="application/json"]');
+    if(!dataNode)throw new Error('该 HTML 中未找到 Cards 恢复数据');
+
+    const payload=JSON.parse(dataNode.textContent||'');
+    if(payload?.backupFormat&&payload.backupFormat!==BACKUP_FORMAT){
+        throw new Error('不支持的 Cards HTML 备份格式');
+    }
+    if(!Array.isArray(payload)&&!Array.isArray(payload?.entries)){
+        throw new Error('Cards 恢复数据格式无效');
+    }
+    return normalizeState(payload);
 }
 function importFile(file){
     if(!unlocked||!file)return;
-    if(file.size>MAX_BYTES){
-        show('文件超过 750 KB','error');
+    if(file.size>MAX_IMPORT_BYTES){
+        show('导入文件超过 4 MB','error');
         return;
     }
     const reader=new FileReader();
     reader.onload=e=>{
         try{
-            const incoming=normalizeState(JSON.parse(e.target.result));
+            const incoming=parseImportedBackup(e.target.result,file);
             if(!confirm('导入会替换当前 Cards 数据，确定继续吗？'))return;
             state=incoming;
             markLocalChange();
             show('导入成功','success');
         }catch(error){
+            console.error(error);
             show(`导入失败：${error.message}`,'error');
         }
     };
+    reader.onerror=()=>show('导入失败：无法读取文件','error');
     reader.readAsText(file,'utf-8');
 }
 
@@ -3218,7 +3344,7 @@ configCancel.addEventListener('click',()=>configModal.classList.add('hidden'));
 configForm.addEventListener('submit',submitConfig);
 
 syncBtn.addEventListener('click',()=>sync(true,true));
-exportBtn.addEventListener('click',downloadJson);
+exportBtn.addEventListener('click',downloadHtmlBackup);
 importBtn.addEventListener('click',()=>fileInput.click());
 fileInput.addEventListener('change',()=>{
     importFile(fileInput.files?.[0]);
