@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="app-build" content="2026-09-22-cards-html-backup-v8">
+<meta name="app-build" content="2026-09-22-cards-firstline-title-v9">
 <meta name="cards-data-file" content="cards_data.json">
 <title>Cards</title>
 <style>
@@ -351,16 +351,8 @@ button{cursor:pointer}
 }
 .cards-item::after{content:"";display:block;clear:both}
 .cards-item > *{max-width:100%}
-.cards-title,.cards-content,.cards-code{min-width:0;overflow-wrap:anywhere;word-break:break-word}
+.cards-content,.cards-code{min-width:0;overflow-wrap:anywhere;word-break:break-word}
 .cards-item:hover{background:#fafcff}
-.cards-title{
-    margin-bottom:.45rem;
-    color:#1E40AF;
-    font-size:1.05rem;
-    font-weight:600;
-    line-height:1.45;
-    overflow-wrap:anywhere;
-}
 .cards-content{
     clear:both;
     overflow-wrap:anywhere;
@@ -368,6 +360,14 @@ button{cursor:pointer}
     font-size:1rem;
     font-weight:400;
     line-height:1.68;
+}
+.rich-editor > :first-child,
+.cards-content > :first-child{
+    margin-bottom:.45rem;
+    color:#1E40AF;
+    font-size:1.05rem;
+    font-weight:600;
+    line-height:1.45;
 }
 .cards-content a{color:#1E40AF;text-decoration:none}
 .cards-content a:hover,.cards-content a:focus-visible{color:#1E3A8A;text-decoration:underline;outline:none}
@@ -713,7 +713,6 @@ button{cursor:pointer}
     }
     .editor-btn{padding:.26rem .52rem}
     .cards-item{padding:1.05rem 1rem 1.2rem}
-    .cards-title{font-size:1.05rem}
     .cards-content{font-size:1rem}
     .dialog{width:100%;border-radius:20px}
     .dialog-scroll{padding:1.2rem 1.2rem .8rem}
@@ -794,10 +793,6 @@ button{cursor:pointer}
         <section class="add-section hidden" id="editorSection">
             <h2>添加</h2>
             <div class="form-group" style="margin-bottom:.9rem">
-                <label for="titleInput">标题</label>
-                <input class="title-input" id="titleInput" type="text" autocomplete="off">
-            </div>
-            <div class="form-group" style="margin-bottom:.9rem">
                 <label for="contentInput">正文</label>
                 <div class="rich-editor-wrap">
                     <div class="rich-editor" id="contentInput" contenteditable="true" role="textbox" aria-multiline="true"></div>
@@ -848,10 +843,6 @@ button{cursor:pointer}
     <div class="dialog">
         <div class="dialog-scroll">
             <h3 id="editHeading">编辑 Cards</h3>
-            <div class="form-group">
-                <label for="editTitle">标题</label>
-                <input class="title-input" id="editTitle" type="text" autocomplete="off">
-            </div>
             <div class="form-group">
                 <label for="editContent">内容</label>
                 <div class="rich-editor-wrap">
@@ -993,8 +984,8 @@ const $=id=>document.getElementById(id);
 const statusDot=$('statusDot'),statusText=$('statusText'),syncBtn=$('syncBtn'),configBtn=$('configBtn'),
 exportBtn=$('exportBtn'),importBtn=$('importBtn'),fileInput=$('fileInput'),lastSyncTime=$('lastSyncTime'),
 lockedPanel=$('lockedPanel'),lockedConfigBtn=$('lockedConfigBtn'),appContent=$('appContent'),editorSection=$('editorSection'),
-titleInput=$('titleInput'),contentInput=$('contentInput'),contentToolbar=$('contentToolbar'),contentImageInput=$('contentImageInput'),typeEntryInput=$('typeEntryInput'),typeQuestionInput=$('typeQuestionInput'),addBtn=$('addBtn'),countDisplay=$('countDisplay'),cardsList=$('cardsList'),
-editModal=$('editModal'),editTitle=$('editTitle'),editContent=$('editContent'),editToolbar=$('editToolbar'),editImageInput=$('editImageInput'),editTypeEntryInput=$('editTypeEntryInput'),editTypeQuestionInput=$('editTypeQuestionInput'),editDelete=$('editDelete'),editCancel=$('editCancel'),editSave=$('editSave'),
+contentInput=$('contentInput'),contentToolbar=$('contentToolbar'),contentImageInput=$('contentImageInput'),typeEntryInput=$('typeEntryInput'),typeQuestionInput=$('typeQuestionInput'),addBtn=$('addBtn'),countDisplay=$('countDisplay'),cardsList=$('cardsList'),
+editModal=$('editModal'),editContent=$('editContent'),editToolbar=$('editToolbar'),editImageInput=$('editImageInput'),editTypeEntryInput=$('editTypeEntryInput'),editTypeQuestionInput=$('editTypeQuestionInput'),editDelete=$('editDelete'),editCancel=$('editCancel'),editSave=$('editSave'),
 configModal=$('configModal'),configForm=$('configForm'),cfgOwner=$('cfgOwner'),cfgRepo=$('cfgRepo'),
 cfgFile=$('cfgFile'),cfgToken=$('cfgToken'),rememberToken=$('rememberToken'),configCancel=$('configCancel'),
 configSave=$('configSave'),backToTopBtn=$('backToTopBtn'),toast=$('toast');
@@ -1148,7 +1139,7 @@ function sanitizeHtml(value){
     cleanNode(template.content);
     return template.innerHTML.trim();
 }
-function renderMarkdownLinks(value){
+function renderMarkdownLinks(value,forcedLabel=''){
     const template=document.createElement('template');
     template.innerHTML=sanitizeHtml(value);
     const regex=/\[([^\]\r\n]+)\]\((https?:\/\/[^\s<>()]+)\)/gi;
@@ -1169,7 +1160,7 @@ function renderMarkdownLinks(value){
             link.href=match[2];
             link.target='_blank';
             link.rel='noopener noreferrer';
-            link.textContent=match[1];
+            link.textContent=forcedLabel||match[1];
             fragment.appendChild(link);
             last=regex.lastIndex;
         }
@@ -1316,20 +1307,27 @@ function normalizeAttachmentFolder(value){
         ? timestamp
         : null;
 }
+function mergeLegacyTitleIntoContent(title,content){
+    const legacyTitle=String(title??'').trim();
+    const body=sanitizeHtml(content);
+    if(!legacyTitle)return body;
+    const titleBlock=`<div>${esc(legacyTitle).replace(/\r?\n/g,'<br>')}</div>`;
+    return sanitizeHtml(`${titleBlock}${body}`);
+}
 function normalizeEntry(x){
     if(!x||typeof x!=='object')return null;
     const id=clean(x.id)||uid();
-    const title=String(x.title??'').trim();
     const source=String(x.source??'').trim();
     const raw=String(x.content??'').trim();
-    const content=x.contentFormat==='html'?sanitizeHtml(raw):plainTextToHtml(raw);
+    const baseContent=x.contentFormat==='html'?sanitizeHtml(raw):plainTextToHtml(raw);
+    const content=mergeLegacyTitleIntoContent(x.title,baseContent);
     const createdAt=validIso(x.createdAt);
     const type=normalizeCardType(x.type);
-    if((!title&&!hasMeaningfulContent(content))||!createdAt)return null;
+    if(!hasMeaningfulContent(content)||!createdAt)return null;
     return{
         id,
         attachmentFolder:normalizeAttachmentFolder(x.attachmentFolder),
-        title,
+        title:'',
         source,
         content,
         contentFormat:'html',
@@ -1779,7 +1777,6 @@ async function restorePendingImages(editor,items){
 }
 function addDraftSnapshot(){
     return JSON.stringify({
-        title:String(titleInput.value??''),
         content:getEditorHtml(contentInput),
         type:getTypeSelection(typeEntryInput,typeQuestionInput),
         pendingTokens:[...pendingMap(contentInput).keys()].sort()
@@ -1788,14 +1785,13 @@ function addDraftSnapshot(){
 function editDraftSnapshot(){
     return JSON.stringify({
         editingId:String(editingId||''),
-        title:String(editTitle.value??''),
         content:getEditorHtml(editContent),
         type:getTypeSelection(editTypeEntryInput,editTypeQuestionInput),
         pendingTokens:[...pendingMap(editContent).keys()].sort()
     });
 }
 function addDraftHasChanges(){
-    const empty=JSON.stringify({title:'',content:'',type:'entry',pendingTokens:[]});
+    const empty=JSON.stringify({content:'',type:'entry',pendingTokens:[]});
     return addDraftSnapshot()!==empty;
 }
 function editDraftHasChanges(){
@@ -1803,7 +1799,7 @@ function editDraftHasChanges(){
 }
 async function buildAddDraftRecord(){
     const draft={
-        version:1,mode:'add',title:String(titleInput.value??''),
+        version:2,mode:'add',
         content:getEditorHtml(contentInput),
         type:getTypeSelection(typeEntryInput,typeQuestionInput),
         pendingImages:await serializePendingImages(contentInput),
@@ -1813,8 +1809,7 @@ async function buildAddDraftRecord(){
 }
 async function buildEditDraftRecord(){
     const draft={
-        version:1,mode:'edit',editingId:String(editingId||''),
-        title:String(editTitle.value??''),
+        version:2,mode:'edit',editingId:String(editingId||''),
         content:getEditorHtml(editContent),
         type:getTypeSelection(editTypeEntryInput,editTypeQuestionInput),
         pendingImages:await serializePendingImages(editContent),
@@ -1889,8 +1884,7 @@ function clearEditDraft(){
         .catch(error=>console.warn('编辑草稿清除标记写入失败',error));
 }
 async function applyAddDraft(draft){
-    titleInput.value=String(draft?.title??'');
-    setEditorHtml(contentInput,String(draft?.content??''));
+    setEditorHtml(contentInput,mergeLegacyTitleIntoContent(draft?.title,String(draft?.content??'')));
     setTypeSelection(typeEntryInput,typeQuestionInput,draft?.type||'entry');
     await restorePendingImages(contentInput,draft?.pendingImages||[]);
     addDraftLastSnapshot=addDraftSnapshot();
@@ -1900,8 +1894,7 @@ async function applyEditDraft(draft){
     const id=String(draft?.editingId||'');
     if(!id||!state.some(item=>item.id===id))return false;
     openEdit(id);
-    editTitle.value=String(draft?.title??'');
-    setEditorHtml(editContent,String(draft?.content??''));
+    setEditorHtml(editContent,mergeLegacyTitleIntoContent(draft?.title,String(draft?.content??'')));
     setTypeSelection(editTypeEntryInput,editTypeQuestionInput,draft?.type||'entry');
     await restorePendingImages(editContent,draft?.pendingImages||[]);
     editDraftLastSnapshot=editDraftSnapshot();
@@ -2146,8 +2139,7 @@ function render(){
 
     cardsList.innerHTML=state.map(item=>`
         <article class="cards-item" data-id="${attr(item.id)}">
-            ${item.title?`<h3 class="cards-title">${esc(item.title)}</h3>`:''}
-            <div class="cards-content">${renderMarkdownLinks(item.content)}</div>
+            <div class="cards-content">${renderMarkdownLinks(item.content,cardUnixCode(item))}</div>
             <div class="cards-footer">
                 <div class="cards-code">${esc(cardUnixCode(item))}</div>
                 ${unlocked?`<div class="item-actions"><button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">编辑</button></div>`:''}
@@ -2944,35 +2936,32 @@ setupRichEditor(editContent,editToolbar,editImageInput);
 // ---------- Cards 增删改 ----------
 async function addEntry(){
     if(!unlocked||addBtn.disabled)return;
-    const title=String(titleInput.value??'').trim();
     const initialContent=getEditorHtml(contentInput);
     const type=getTypeSelection(typeEntryInput,typeQuestionInput);
-    if(!title&&!hasMeaningfulContent(initialContent)){show('请输入标题或正文','error');titleInput.focus();return;}
+    if(!hasMeaningfulContent(initialContent)){show('请输入正文','error');contentInput.focus();return;}
     const id=uid();
     addBtn.disabled=true;
     try{
         const attachmentFolder=hasPendingImages(contentInput)?allocateAttachmentFolder():null;
         const content=await resolvePendingImages(contentInput,attachmentFolder);
-        state.push({id,attachmentFolder,title,source:'',content,contentFormat:'html',type,createdAt:new Date().toISOString()});
+        state.push({id,attachmentFolder,title:'',source:'',content,contentFormat:'html',type,createdAt:new Date().toISOString()});
 
         // 与最终版 Demo / Note / Repo 一致：先确认正式浏览器工作副本落盘，再清未提交草稿。
         await persistWorkingCopyNow(state);
         await clearAddDraft();
 
-        titleInput.value='';
         contentInput.innerHTML='';
         setTypeSelection(typeEntryInput,typeQuestionInput,'entry');
         clearPendingUploads(contentInput);
         addDraftLastSnapshot=addDraftSnapshot();
 
         markLocalChange();
-        titleInput.focus();show('已提交','success');
+        contentInput.focus();show('已提交','success');
     }catch(error){console.error(error);show(`提交失败：${formatError(error)}`,'error');}
     finally{addBtn.disabled=false;}
 }
 function editSnapshot(){
     return JSON.stringify({
-        title:String(editTitle.value??''),
         content:getEditorHtml(editContent),
         type:getTypeSelection(editTypeEntryInput,editTypeQuestionInput)
     });
@@ -2991,7 +2980,6 @@ function openEdit(id){
     const item=state.find(x=>x.id===id);
     if(!item)return;
     editingId=id;
-    editTitle.value=item.title||'';
     setEditorHtml(editContent,item.content);
     setTypeSelection(editTypeEntryInput,editTypeQuestionInput,item.type);
     editInitialSnapshot=editSnapshot();
@@ -3009,21 +2997,20 @@ function openEdit(id){
 
     editDraftLastSnapshot='';
     startEditDraftAutosave();
-    setTimeout(()=>editTitle.focus(),30);
+    setTimeout(()=>editContent.focus(),30);
 }
 async function saveEdit(){
     if(!unlocked||editSave.disabled)return;
     const item=state.find(x=>x.id===editingId);if(!item)return;
-    const title=String(editTitle.value??'').trim();
     const initialContent=getEditorHtml(editContent);
     const type=getTypeSelection(editTypeEntryInput,editTypeQuestionInput);
-    if(!title&&!hasMeaningfulContent(initialContent)){show('标题和正文不能同时为空','error');editTitle.focus();return;}
+    if(!hasMeaningfulContent(initialContent)){show('正文不能为空','error');editContent.focus();return;}
     editSave.disabled=true;
     try{
         const attachmentFolder=normalizeAttachmentFolder(item.attachmentFolder)
             ??(hasPendingImages(editContent)?allocateAttachmentFolder():null);
         const content=await resolvePendingImages(editContent,attachmentFolder);
-        item.attachmentFolder=attachmentFolder;item.title=title;item.content=content;item.contentFormat='html';item.type=type;
+        item.attachmentFolder=attachmentFolder;item.title='';item.content=content;item.contentFormat='html';item.type=type;
 
         stopEditDraftAutosave();
         // 与最终版 Demo / Note / Repo 一致：IndexedDB + OPFS 正式工作副本完成后，才清草稿。
@@ -3079,8 +3066,7 @@ function buildBackupHtml(payload){
     const entries=normalizeState(payload.entries);
     const cardsHtml=entries.length?entries.map(item=>`
         <article class="backup-card">
-            ${item.title?`<h2>${esc(item.title)}</h2>`:''}
-            <div class="backup-content">${renderMarkdownLinks(item.content)}</div>
+            <div class="backup-content">${renderMarkdownLinks(item.content,cardUnixCode(item))}</div>
             <dl class="backup-meta">
                 <div><dt>类型</dt><dd>${item.type==='question'?'题目':'条目'}</dd></div>
                 <div><dt>提交时间</dt><dd>${esc(item.createdAt)}</dd></div>
@@ -3113,8 +3099,8 @@ h1{margin:0 0 8px;font-size:2rem}
 .notice{margin:0 0 24px;padding:12px 16px;border:1px solid #cbd5e1;border-radius:14px;background:#f8fafc;color:#475569}
 .backup-list{display:flex;flex-direction:column;gap:16px}
 .backup-card{padding:20px;border:1px solid #e2e8f0;border-radius:18px}
-.backup-card h2{margin:0 0 8px;color:#1e40af;font-size:1.12rem}
-.backup-content{overflow-wrap:anywhere}
+.backup-content{overflow-wrap:anywhere;color:#0f172a;font-size:1rem;font-weight:400;line-height:1.68}
+.backup-content > :first-child{margin-bottom:.45rem;color:#1e40af;font-size:1.05rem;font-weight:600;line-height:1.45}
 .backup-content img{display:block;max-width:100%;height:auto;margin:.75em auto;border-radius:10px}
 .backup-content table{width:100%;margin:.8em 0;border-collapse:collapse}
 .backup-content th,.backup-content td{padding:.38em .55em;border:1px solid #cbd5e1;vertical-align:top}
@@ -3257,12 +3243,6 @@ async function submitConfig(event){
 
 // ---------- 事件 ----------
 addBtn.addEventListener('click',addEntry);
-titleInput.addEventListener('keydown',event=>{
-    if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){
-        event.preventDefault();
-        addEntry();
-    }
-});
 contentInput.addEventListener('keydown',event=>{
     if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){
         event.preventDefault();
@@ -3305,12 +3285,6 @@ editModal.addEventListener('pointerup',event=>{
     if(shouldClose)closeEditModal();
 });
 editModal.addEventListener('pointercancel',()=>{editOverlayPointer=null;});
-editTitle.addEventListener('keydown',event=>{
-    if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){
-        event.preventDefault();
-        saveEdit();
-    }
-});
 editContent.addEventListener('keydown',event=>{
     if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){
         event.preventDefault();
@@ -3319,11 +3293,9 @@ editContent.addEventListener('keydown',event=>{
 });
 
 // 草稿输入：0.5 秒防抖 + 5 秒强制快照；页面隐藏/退出时再补存一次。
-titleInput.addEventListener('input',markAddDraftChanged);
 contentInput.addEventListener('input',markAddDraftChanged);
 typeEntryInput.addEventListener('change',markAddDraftChanged);
 typeQuestionInput.addEventListener('change',markAddDraftChanged);
-editTitle.addEventListener('input',markEditDraftChanged);
 editContent.addEventListener('input',markEditDraftChanged);
 editTypeEntryInput.addEventListener('change',markEditDraftChanged);
 editTypeQuestionInput.addEventListener('change',markEditDraftChanged);
