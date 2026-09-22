@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="app-build" content="2026-09-22-cards-firstline-title-v9">
+<meta name="app-build" content="2026-09-22-cards-link-code-v10">
 <meta name="cards-data-file" content="cards_data.json">
 <title>Cards</title>
 <style>
@@ -351,7 +351,7 @@ button{cursor:pointer}
 }
 .cards-item::after{content:"";display:block;clear:both}
 .cards-item > *{max-width:100%}
-.cards-content,.cards-code{min-width:0;overflow-wrap:anywhere;word-break:break-word}
+.cards-content{min-width:0;overflow-wrap:anywhere;word-break:break-word}
 .cards-item:hover{background:#fafcff}
 .cards-content{
     clear:both;
@@ -413,15 +413,6 @@ button{cursor:pointer}
     gap:12px;
     width:100%;
     margin-top:.65rem;
-}
-.cards-code{
-    min-width:0;
-    flex:1 1 auto;
-    color:#64748b;
-    font-size:.82rem;
-    font-weight:400;
-    line-height:1.5;
-    overflow-wrap:anywhere;
 }
 .inline-note{
     color:#64748b;
@@ -1166,6 +1157,11 @@ function renderMarkdownLinks(value,forcedLabel=''){
         }
         if(last<text.length)fragment.appendChild(document.createTextNode(text.slice(last)));
         node.replaceWith(fragment);
+    }
+    if(forcedLabel){
+        template.content.querySelectorAll('a').forEach(link=>{
+            link.textContent=forcedLabel;
+        });
     }
     return template.innerHTML;
 }
@@ -2140,12 +2136,20 @@ function render(){
     cardsList.innerHTML=state.map(item=>`
         <article class="cards-item" data-id="${attr(item.id)}">
             <div class="cards-content">${renderMarkdownLinks(item.content,cardUnixCode(item))}</div>
-            <div class="cards-footer">
-                <div class="cards-code">${esc(cardUnixCode(item))}</div>
-                ${unlocked?`<div class="item-actions"><button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">编辑</button></div>`:''}
-            </div>
+            ${unlocked?`<div class="cards-footer"><div class="item-actions"><button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">编辑</button></div></div>`:''}
         </article>
     `).join('');
+
+    // 最终兜底：条目内所有链接只改“可见文字”为该条目的 8 位编码，
+    // href / target / rel 等链接属性保持不变。
+    cardsList.querySelectorAll('.cards-item').forEach(card=>{
+        const item=state.find(entry=>entry.id===card.dataset.id);
+        const code=cardUnixCode(item);
+        if(!code)return;
+        card.querySelectorAll('.cards-content a').forEach(link=>{
+            link.textContent=code;
+        });
+    });
 
     publicLoaded=true;
     exportBtn.disabled=false;
