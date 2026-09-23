@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<meta name="app-build" content="2026-09-22-cards-link-code-v10">
+<meta name="app-build" content="2026-09-23-cards-edit-code-v11">
 <meta name="cards-data-file" content="cards_data.json">
 <title>Cards</title>
 <style>
@@ -1130,7 +1130,7 @@ function sanitizeHtml(value){
     cleanNode(template.content);
     return template.innerHTML.trim();
 }
-function renderMarkdownLinks(value,forcedLabel=''){
+function renderMarkdownLinks(value){
     const template=document.createElement('template');
     template.innerHTML=sanitizeHtml(value);
     const regex=/\[([^\]\r\n]+)\]\((https?:\/\/[^\s<>()]+)\)/gi;
@@ -1151,17 +1151,12 @@ function renderMarkdownLinks(value,forcedLabel=''){
             link.href=match[2];
             link.target='_blank';
             link.rel='noopener noreferrer';
-            link.textContent=forcedLabel||match[1];
+            link.textContent=match[1];
             fragment.appendChild(link);
             last=regex.lastIndex;
         }
         if(last<text.length)fragment.appendChild(document.createTextNode(text.slice(last)));
         node.replaceWith(fragment);
-    }
-    if(forcedLabel){
-        template.content.querySelectorAll('a').forEach(link=>{
-            link.textContent=forcedLabel;
-        });
     }
     return template.innerHTML;
 }
@@ -2135,21 +2130,10 @@ function render(){
 
     cardsList.innerHTML=state.map(item=>`
         <article class="cards-item" data-id="${attr(item.id)}">
-            <div class="cards-content">${renderMarkdownLinks(item.content,cardUnixCode(item))}</div>
-            ${unlocked?`<div class="cards-footer"><div class="item-actions"><button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">编辑</button></div></div>`:''}
+            <div class="cards-content">${renderMarkdownLinks(item.content)}</div>
+            ${unlocked?`<div class="cards-footer"><div class="item-actions"><button class="action-btn edit-btn" data-id="${attr(item.id)}" type="button">${esc(cardUnixCode(item))}</button></div></div>`:''}
         </article>
     `).join('');
-
-    // 最终兜底：条目内所有链接只改“可见文字”为该条目的 8 位编码，
-    // href / target / rel 等链接属性保持不变。
-    cardsList.querySelectorAll('.cards-item').forEach(card=>{
-        const item=state.find(entry=>entry.id===card.dataset.id);
-        const code=cardUnixCode(item);
-        if(!code)return;
-        card.querySelectorAll('.cards-content a').forEach(link=>{
-            link.textContent=code;
-        });
-    });
 
     publicLoaded=true;
     exportBtn.disabled=false;
@@ -3070,7 +3054,7 @@ function buildBackupHtml(payload){
     const entries=normalizeState(payload.entries);
     const cardsHtml=entries.length?entries.map(item=>`
         <article class="backup-card">
-            <div class="backup-content">${renderMarkdownLinks(item.content,cardUnixCode(item))}</div>
+            <div class="backup-content">${renderMarkdownLinks(item.content)}</div>
             <dl class="backup-meta">
                 <div><dt>类型</dt><dd>${item.type==='question'?'题目':'条目'}</dd></div>
                 <div><dt>提交时间</dt><dd>${esc(item.createdAt)}</dd></div>
