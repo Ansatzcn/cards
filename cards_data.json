@@ -12,16 +12,6 @@
       "createdAt": "2026-09-15T02:58:04.191Z"
     },
     {
-      "id": "9c58a634-71cf-4a44-b547-445b01273236",
-      "attachmentFolder": null,
-      "title": "",
-      "source": "",
-      "content": "<div>中山大学2017年考研试题</div>假设一个消费者的收入为28，效用函数为$u=min\\{ 3x_1,x_2\\}$，$x_1$和$x_2$分别是商品1和商品2的数量。<div>1. 如果商品1和商品2的价格分别为1和2，求解消费者的最优决策；</div><div>2. 假设其他条件不变，如果商品2的价格由2下降到1，求解这一变化带来的替代效应和收入效应。</div>",
-      "contentFormat": "html",
-      "type": "question",
-      "createdAt": "2026-09-11T09:05:57.627Z"
-    },
-    {
       "id": "bb9b44e6-f68d-4da3-8545-ced294ca529f",
       "attachmentFolder": null,
       "title": "",
